@@ -1,6 +1,11 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <cstdlib>
+
+#include "memory.h"
+
+Memory mem;
 
 #define INST_PTR_LOC 0x0
 #define STK_PTR_LOC  0x1
@@ -9,27 +14,27 @@
 
 #define CODE_START 0x1000
 
-#define INSTR(opcode, value, doc) opcode = value,
+#define INSTR(opcode, value, family, doc) opcode = value,
 enum op {
-    INSTR(MV ,   0b0000, "Move")
-    INSTR(XG ,   0b0001, "Exchange")
-    INSTR(AD ,   0b0010, "Add")
-    INSTR(SB ,   0b0011, "Subtract")
-    INSTR(ND ,   0b0100, "And (bitwise)")
-    INSTR(OR ,   0b0101, "Or (bitwise)")
-    INSTR(XR ,   0b0110, "Xor (bitwise)")
-    INSTR(SR ,   0b0111, "Shift Right")
-    INSTR(SL ,   0b1000, "Shift Left")
-    INSTR(SA ,   0b1001, "Arithmetic Shift Right")
-    INSTR(MI ,   0b1010, "Move Immediate")
-    INSTR(MD ,   0b1011, "Move Dereference")
-    INSTR(JG ,   0b1100, "Jump if Greater-Than")
-    INSTR(JL ,   0b1101, "Jump if Less-Than")
-    INSTR(JQ ,   0b1110, "Jump if Equal-To")
-    INSTR(HF1,   0b1111, "Halt and Catch Fire")
+    INSTR(MV ,   0b0000, ARITH, "Move")
+    INSTR(XG ,   0b0001, ARITH, "Exchange")
+    INSTR(AD ,   0b0010, ARITH, "Add")
+    INSTR(SB ,   0b0011, ARITH, "Subtract")
+    INSTR(ND ,   0b0100, ARITH, "And (bitwise)")
+    INSTR(OR ,   0b0101, ARITH, "Or (bitwise)")
+    INSTR(XR ,   0b0110, ARITH, "Xor (bitwise)")
+    INSTR(SR ,   0b0111, ARITH, "Shift Right")
+    INSTR(SL ,   0b1000, ARITH, "Shift Left")
+    INSTR(SA ,   0b1001, ARITH, "Arithmetic Shift Right")
+    INSTR(MI ,   0b1010, MOV_IMM, "Move Immediate")
+    INSTR(MD ,   0b1011, MOV_DER, "Move Dereference")
+    INSTR(JG ,   0b1100, JUMP, "Jump if Greater-Than")
+    INSTR(JL ,   0b1101, JUMP, "Jump if Less-Than")
+    INSTR(JQ ,   0b1110, JUMP, "Jump if Equal-To")
+    INSTR(HF1,   0b1111, HALT, "Halt and Catch Fire")
 };
 
-#define OPCODE(addr) ((mem[addr] & 0b1111000000000000)>>12)
+#define OPCODE(addr) (op((mem[addr] & 0b1111000000000000)>>12))
 
 // Arith decoder macros
 #define ARITH_LEN_BYTES 4
@@ -54,10 +59,6 @@ enum op {
 #define JUMP_RHS(addr) ((mem[addr+1] & 0b1111111111111111))
 #define JUMP_ADDR(addr) ((mem[addr+2] & 0b1111111111111111))
 
-typedef uint16_t mem_t;
-
-mem_t mem[1<<15] = {0};
-
 
 void interp_instr() {
     mem_t ip = mem[INST_PTR_LOC];
@@ -65,6 +66,7 @@ void interp_instr() {
     enum op opcode = OPCODE(ip);
     mem_t dst, src, imm;
     mem_t lhs, rhs, addr;
+    mem_t temp;
     switch (opcode) {
         case MV:
             next_ip = ip + (ARITH_LEN_BYTES>>1);
@@ -84,7 +86,7 @@ void interp_instr() {
             src = ARITH_SRC(ip);
             printf("0x%04x: XG 0x%04x, 0x%04x\n", ip, dst, src);
             // could swap with xor, but this is clear
-            mem_t temp = mem[dst];
+            temp = mem[dst];
             mem[dst] = mem[src];
             mem[src] = temp;
             break;
@@ -231,28 +233,25 @@ void interp_instr() {
     }
 }
 
-int main() {
-    mem_t code[] = {
-        0x0F11, 0xdead,         // MV 0xF11, 0xDEAD
-        0x1F22, 0xdead,         // XG 0xF22, 0xDEAD
-        0x2F33, 0xdead,         // AD 0xF33, 0xDEAD
-        0x3F44, 0xdead,         // SB 0xF44, 0xDEAD
-        0x4F55, 0xdead,         // ND 0xF55, 0xDEAD
-        0x5F66, 0xdead,         // OR 0xF66, 0xDEAD
-        0x6F77, 0xdead,         // XR 0xF77, 0xDEAD
-        0x7F88, 0xdead,         // SR 0xF88, 0xDEAD
-        0x8F99, 0xdead,         // SL 0xF99, 0xDEAD
-        0x9FAA, 0xdead,         // SA 0xFAA, 0xDEAD
-        0xAFBB, 0xdead,         // MI 0xFBB, 0xDEAD
-        0xBFCC, 0xdead,         // MD 0xFCC, 0xDEAD
-        0xCFDD, 0xdead, 0xbeef, // JG 0xFDD, 0xDEAD, 0xBEEF
-        0xDFEE, 0x00cc, 0xbeef, // JL 0xFEE, 0x00CC, 0xBEEF
-        0xEFFF, 0xdead, 0xbeef, // JQ 0xFFF, 0xDEAD, 0xBEEF
-        0xFF00,                 // HF
-    };
+int main(int argc, char **argv) {
+    if (argc <= 1) {
+        printf("Err: Specify file\n");
+        return -1;
+    }
 
+    FILE* fd = fopen(argv[1], "r");
+    if (!fd) {
+        perror("File");
+        return -1;
+    }
+    
+#define MAX_CODE_SIZE 0xFFFF
+    mem_t code[MAX_CODE_SIZE] = {0};
+    size_t code_size = fread(code, 2, MAX_CODE_SIZE, fd);
 
-    memcpy(mem + CODE_START, code, sizeof(code));
+    for (size_t i = 0; i < code_size; ++i) {
+        mem[CODE_START + i] = code[i];
+    }
 
     mem[INST_PTR_LOC] = CODE_START;
 
