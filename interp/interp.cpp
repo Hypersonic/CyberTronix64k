@@ -5,7 +5,7 @@
 
 #include "memory.h"
 
-Memory mem;
+memory mem;
 
 #define INST_PTR_LOC 0x0
 #define STK_PTR_LOC  0x1
@@ -231,6 +231,7 @@ void interp_instr() {
             
             break;
     }
+    mem.disp.redraw();
 }
 
 int main(int argc, char **argv) {
