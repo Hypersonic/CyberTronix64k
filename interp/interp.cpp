@@ -187,7 +187,7 @@ void interp_instr() {
             printf("0x%04x: JG 0x%04x, 0x%04x, 0x%04x\n", ip, lhs, rhs, addr);
 
             if (lhs > rhs) {
-                next_ip = addr;
+                next_ip = ip + addr;
             } else {
                 next_ip = ip + (JUMP_LEN_BYTES>>1);
             }
@@ -202,7 +202,7 @@ void interp_instr() {
             printf("0x%04x: JL 0x%04x, 0x%04x, 0x%04x\n", ip, lhs, rhs, addr);
 
             if (lhs < rhs) {
-                next_ip = addr;
+                next_ip = ip + addr;
             } else {
                 next_ip = ip + (JUMP_LEN_BYTES>>1);
             }
@@ -217,7 +217,7 @@ void interp_instr() {
             printf("0x%04x: JQ 0x%04x, 0x%04x, 0x%04x\n", ip, lhs, rhs, addr);
 
             if (lhs == rhs) {
-                next_ip = addr;
+                next_ip = ip + addr;
             } else {
                 next_ip = ip + (JUMP_LEN_BYTES>>1);
             }
