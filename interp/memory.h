@@ -9,6 +9,7 @@ typedef uint16_t mem_t;
 
 class display {
 public:
+    display() : screen{} {};
     void redraw() {}; // TODO
     mem_t disp_coords;
     mem_t screen[DISPLAY_REGION_SIZE];
@@ -16,6 +17,7 @@ public:
 
 class memory {
 public:
+    memory() : disp(), mem{0} {};
     // access methods
     mem_t& operator[](size_t idx) {
         if (DISPLAY_CONTROL_REG_LOC == idx) {
