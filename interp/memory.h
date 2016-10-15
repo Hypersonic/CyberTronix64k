@@ -1,18 +1,28 @@
 #pragma once
+#include <SDL.h>
+#include <atomic>
 
 typedef uint16_t mem_t;
 
-#define DISPLAY_REGION_SIZE 0xFF
+#define DISPLAY_DIMENSIONS 255
+#define DISPLAY_SIZE (DISPLAY_DIMENSIONS * DISPLAY_DIMENSIONS)
+#define DISPLAY_REGION_DIMENSIONS 16
+#define DISPLAY_REGION_SIZE (DISPLAY_REGION_DIMENSIONS * DISPLAY_REGION_DIMENSIONS)
 #define DISPLAY_REGION_START 0x100
 #define DISPLAY_REGION_END (DISPLAY_REGION_START + DISPLAY_REGION_SIZE)
 #define DISPLAY_CONTROL_REG_LOC (DISPLAY_REGION_START-1)
 
 class display {
 public:
-    display() : screen{} {};
-    void redraw() {}; // TODO
+    display() : screen{0}, is_init(false) {};
+    void redraw();
     mem_t disp_coords;
-    mem_t screen[DISPLAY_REGION_SIZE];
+    mem_t screen[DISPLAY_SIZE];
+    std::atomic<bool> is_init;
+
+private:
+    SDL_Window *window;
+    SDL_Renderer *renderer;
 };
 
 class memory {
