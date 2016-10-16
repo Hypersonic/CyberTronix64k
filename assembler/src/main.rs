@@ -5,7 +5,7 @@ use std::process;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Write, Read};
-use std::fmt::{self, Debug};
+use std::fmt::{self, Debug, Display};
 
 macro_rules! eprint {
   ($($t:tt)*) => ({
@@ -22,36 +22,51 @@ macro_rules! eprintln {
 
 mod parser;
 
-pub struct Register(u16);
-pub struct Memory(u16);
-pub struct Label(String);
+pub enum Number {
+  Immediate(u16),
+  Label(String),
+}
 
-pub enum Opcode {
-  MoveImmediate(Register, u16),
-  Move(Register, Memory),
-  MoveDeref(Register, Memory),
-  Load(Register, Memory),
-  Store(Register, Memory),
-  Add(Register, Memory),
-  Sub(Register, Memory),
-  And(Register, Memory),
-  Or(Register, Memory),
-  Xor(Register, Memory),
-  ShiftRight(Register, Memory),
-  ShiftLeft(Register, Memory),
-  ShiftArithmetic(Register, Memory),
-  JumpGreater(Register, Memory, Label),
-  JumpLesser(Register, Memory, Label),
-  JumpEqual(Register, Memory, Label),
+impl Display for Number {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match *self {
+      Number::Immediate(i) => write!(f, "0x{:x}", i),
+      Number::Label(ref s) => write!(f, "{}", s),
+    }
+  }
+}
+
+pub struct Opcode {
+  variant: OpcodeVariant,
+  reg: Number,
+  mem: Number,
+}
+
+pub enum OpcodeVariant {
+  MoveImmediate,
+  Move,
+  MoveDeref,
+  Load,
+  Store,
+  Add,
+  Sub,
+  And,
+  Or,
+  Xor,
+  ShiftRight,
+  ShiftLeft,
+  ShiftArithmetic,
+  JumpGreater(Number),
+  JumpLesser(Number),
+  JumpEqual(Number),
 }
 
 impl Opcode {
   fn size(&self) -> u16 {
-    use Opcode::*;
-    match *self {
-      MoveImmediate(..) | Move(..) | MoveDeref(..) | Load(..) | Store(..)
-      | Add(..) | Sub(..) | And(..) | Or(..) | Xor(..)
-      | ShiftRight(..) | ShiftLeft(..) | ShiftArithmetic(..) => {
+    use OpcodeVariant::*;
+    match self.variant {
+      MoveImmediate | Move | MoveDeref | Load | Store | Add | Sub
+      | And | Or | Xor | ShiftRight | ShiftLeft | ShiftArithmetic => {
         2
       }
       JumpGreater(..) | JumpLesser(..) | JumpEqual(..) => {
@@ -63,40 +78,27 @@ impl Opcode {
 
 impl Debug for Opcode {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    use Opcode::*;
-    match *self {
-      MoveImmediate(ref reg, ref imm) =>
-        write!(f, "MI 0x{:x}, 0x{:x}", reg.0, imm),
-      Move(ref reg, ref mem) =>
-        write!(f, "MV 0x{:x}, 0x{:x}", reg.0, mem.0),
-      MoveDeref(ref reg, ref mem) =>
-        write!(f, "MD 0x{:x}, 0x{:x}", reg.0, mem.0),
-      Load(ref reg, ref mem) =>
-        write!(f, "LD 0x{:x}, 0x{:x}", reg.0, mem.0),
-      Store(ref reg, ref mem) =>
-        write!(f, "ST 0x{:x}, 0x{:x}", reg.0, mem.0),
-      Add(ref reg, ref mem) =>
-        write!(f, "AD 0x{:x}, 0x{:x}", reg.0, mem.0),
-      Sub(ref reg, ref mem) =>
-        write!(f, "SB 0x{:x}, 0x{:x}", reg.0, mem.0),
-      And(ref reg, ref mem) =>
-        write!(f, "ND 0x{:x}, 0x{:x}", reg.0, mem.0),
-      Or(ref reg, ref mem) =>
-        write!(f, "OR 0x{:x}, 0x{:x}", reg.0, mem.0),
-      Xor(ref reg, ref mem) =>
-        write!(f, "XR 0x{:x}, 0x{:x}", reg.0, mem.0),
-      ShiftRight(ref reg, ref mem) =>
-        write!(f, "SR 0x{:x}, 0x{:x}", reg.0, mem.0),
-      ShiftLeft(ref reg, ref mem) =>
-        write!(f, "SL 0x{:x}, 0x{:x}", reg.0, mem.0),
-      ShiftArithmetic(ref reg, ref mem) =>
-        write!(f, "SA 0x{:x}, 0x{:x}", reg.0, mem.0),
-      JumpGreater(ref reg, ref mem, ref label) =>
-        write!(f, "JG 0x{:x}, 0x{:x}, {}", reg.0, mem.0, label.0),
-      JumpLesser(ref reg, ref mem, ref label) =>
-        write!(f, "JL 0x{:x}, 0x{:x}, {}", reg.0, mem.0, label.0),
-      JumpEqual(ref reg, ref mem, ref label) =>
-        write!(f, "JQ 0x{:x}, 0x{:x}, {}", reg.0, mem.0, label.0),
+    use OpcodeVariant::*;
+    match self.variant {
+      MoveImmediate => write!(f, "MI {}, {}", self.reg, self.mem),
+      Move => write!(f, "MV {}, {}", self.reg, self.mem),
+      MoveDeref => write!(f, "MD {}, {}", self.reg, self.mem),
+      Load => write!(f, "LD {}, {}", self.reg, self.mem),
+      Store => write!(f, "ST {}, {}", self.reg, self.mem),
+      Add => write!(f, "AD {}, {}", self.reg, self.mem),
+      Sub => write!(f, "SB {}, {}", self.reg, self.mem),
+      And => write!(f, "ND {}, {}", self.reg, self.mem),
+      Or => write!(f, "OR {}, {}", self.reg, self.mem),
+      Xor => write!(f, "XR {}, {}", self.reg, self.mem),
+      ShiftRight => write!(f, "SR {}, {}", self.reg, self.mem),
+      ShiftLeft => write!(f, "SL {}, {}", self.reg, self.mem),
+      ShiftArithmetic => write!(f, "SA {}, {}", self.reg, self.mem),
+      JumpGreater(ref label) =>
+        write!(f, "JG {}, {}, {}", self.reg, self.mem, label),
+      JumpLesser(ref label) =>
+        write!(f, "JL {}, {}, {}", self.reg, self.mem, label),
+      JumpEqual(ref label) =>
+        write!(f, "JQ {}, {}, {}", self.reg, self.mem, label),
     }
   }
 }
@@ -113,7 +115,7 @@ impl Program {
       program: Vec::new(),
     };
 
-    let mut offset = 0;
+    let mut offset = 0x1000;
     for op_or_label in parser::Parser::new(input) {
       match op_or_label {
         parser::OpOrLabel::Op(op) => {
@@ -122,7 +124,13 @@ impl Program {
           offset += tmp;
         }
         parser::OpOrLabel::Label(label, idx) => {
-          this.labels.insert(label, idx);
+          match this.labels.insert(label, idx + offset) {
+            Some(old) => {
+              eprintln!("Attempted to duplicate label definition: {}", old);
+              process::exit(1);
+            }
+            None => {}
+          }
         }
       }
     }
@@ -197,7 +205,7 @@ fn main() {
   let program = Program::new(bytes);
   let labels = program.labels;
   for op in program.program {
-    use Opcode::*;
+    use OpcodeVariant::*;
     let offset = op.1;
 
     fn write(out: &mut File, to_write: &[u16]) {
@@ -217,50 +225,63 @@ fn main() {
         }
       }
     };
-    let mut jump = |
-      out: &mut File, lge: i8, reg: Register, mem: Memory, label: Label
-    | {
-      let label = match labels.get(&label.0) {
-        Some(&l) => l,
-        None => {
-          if (label.0).is_empty() {
+    let get_number = |num: &Number, labels: &HashMap<String, u16>| -> u16 {
+      match *num {
+        Number::Immediate(n) => n,
+        Number::Label(ref s) => {
+          if s.is_empty() {
             offset
+          } else if let Some(&n) = labels.get(s) {
+            n
           } else {
-            eprintln!("Label not found: {}", label.0);
+            eprintln!("Label not found: {}", s);
             process::exit(1);
           }
         }
-      };
-
-      let jr = label.wrapping_sub(offset);
-
-      if lge > 0 {
-        write(out, &[(0xD << 12) | reg.0, mem.0, jr]);
-      } else if lge < 0 {
-        write(out, &[(0xE << 12) | reg.0, mem.0, jr]);
-      } else {
-        write(out, &[(0xF << 12) | reg.0, mem.0, jr]);
       }
     };
+    let mut arith = |out: &mut File, opcode: u16, reg: &Number, mem: &Number| {
+      let regn = get_number(&reg, &labels);
+      if regn >= 0x1000 {
+        eprintln!("Register label out of range: {} is 0x{:x}", reg, regn);
+        process::exit(1);
+      }
+      let mem = get_number(&mem, &labels);
+      write(out, &[(opcode << 12) | regn, mem]);
+    };
+    let mut jump = |
+      out: &mut File, opcode: u16, reg: &Number, mem: &Number, label: &Number
+    | {
+      let regn = get_number(&reg, &labels);
+      if regn >= 0x1000 {
+        eprintln!("Register label out of range: {} is 0x{:x}", reg, regn);
+        process::exit(1);
+      }
+      let mem = get_number(&mem, &labels);
+      let label = get_number(&label, &labels);
+      write(out, &[(opcode << 12) | regn, mem, label]);
+    };
 
-    match op.0 {
-      MoveImmediate(reg, imm) => write(&mut out, &[(0x0 << 12) | reg.0, imm]),
-      Move(reg, mem) => write(&mut out, &[(0x1 << 12) | reg.0, mem.0]),
-      MoveDeref(reg, mem) => write(&mut out, &[(0x2 << 12) | reg.0, mem.0]),
-      Load(reg, mem) => write(&mut out, &[(0x3 << 12) | reg.0, mem.0]),
-      Store(reg, mem) => write(&mut out, &[(0x4 << 12) | reg.0, mem.0]),
-      Add(reg, mem) => write(&mut out, &[(0x5 << 12) | reg.0, mem.0]),
-      Sub(reg, mem) => write(&mut out, &[(0x6 << 12) | reg.0, mem.0]),
-      And(reg, mem) => write(&mut out, &[(0x7 << 12) | reg.0, mem.0]),
-      Or(reg, mem) => write(&mut out, &[(0x8 << 12) | reg.0, mem.0]),
-      Xor(reg, mem) => write(&mut out, &[(0x9 << 12) | reg.0, mem.0]),
-      ShiftRight(reg, mem) => write(&mut out, &[(0xA << 12) | reg.0, mem.0]),
-      ShiftLeft(reg, mem) => write(&mut out, &[(0xB << 12) | reg.0, mem.0]),
-      ShiftArithmetic(reg, mem) =>
-        write(&mut out, &[(0xC << 12) | reg.0, mem.0]),
-      JumpGreater(reg, mem, label) => jump(&mut out, 1, reg, mem, label),
-      JumpLesser(reg, mem, label) => jump(&mut out, 1, reg, mem, label),
-      JumpEqual(reg, mem, label) => jump(&mut out, 1, reg, mem, label),
+    match (op.0).variant {
+      MoveImmediate => arith(&mut out, 0x0, &(op.0).reg, &(op.0).mem),
+      Move => arith(&mut out, 0x1, &(op.0).reg, &(op.0).mem),
+      MoveDeref => arith(&mut out, 0x2, &(op.0).reg, &(op.0).mem),
+      Load => arith(&mut out, 0x3, &(op.0).reg, &(op.0).mem),
+      Store => arith(&mut out, 0x4, &(op.0).reg, &(op.0).mem),
+      Add => arith(&mut out, 0x5, &(op.0).reg, &(op.0).mem),
+      Sub => arith(&mut out, 0x6, &(op.0).reg, &(op.0).mem),
+      And => arith(&mut out, 0x7, &(op.0).reg, &(op.0).mem),
+      Or => arith(&mut out, 0x8, &(op.0).reg, &(op.0).mem),
+      Xor => arith(&mut out, 0x9, &(op.0).reg, &(op.0).mem),
+      ShiftRight => arith(&mut out, 0xA, &(op.0).reg, &(op.0).mem),
+      ShiftLeft => arith(&mut out, 0xB, &(op.0).reg, &(op.0).mem),
+      ShiftArithmetic => arith(&mut out, 0xC, &(op.0).reg, &(op.0).mem),
+      JumpGreater(ref label) =>
+        jump(&mut out, 0xD, &(op.0).reg, &(op.0).mem, label),
+      JumpLesser(ref label) =>
+        jump(&mut out, 0xE, &(op.0).reg, &(op.0).mem, label),
+      JumpEqual(ref label) =>
+        jump(&mut out, 0xF, &(op.0).reg, &(op.0).mem, label),
     }
   }
 }

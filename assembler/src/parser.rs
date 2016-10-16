@@ -1,5 +1,5 @@
 use std::process;
-use Opcode;
+use {Opcode, OpcodeVariant};
 
 pub enum OpOrLabel {
   Op(Opcode),
@@ -16,55 +16,26 @@ impl Parser {
     Parser { lexer: Lexer::new(input), offset: 0 }
   }
 
-  fn get_rm(&mut self) -> ::Register {
-    use self::Token::*;
-    let ret = self.get_mem();
-    if ret.0 >= 0x1000 {
-      eprintln!("Overflowing literal for register memory: 0x{:x}", ret.0);
-      process::exit(1);
+  fn get_rm(&mut self) -> ::Number {
+    let ret = self.get_num();
+    match ret {
+      ::Number::Immediate(n) if n >= 0x1000 => {
+        eprintln!("Overflowing literal for register memory: 0x{:x}", n);
+        process::exit(1);
+      }
+      _ => {}
     }
-    ::Register(ret.0)
+    ret
   }
-  fn get_mem(&mut self) -> ::Memory {
+  fn get_num(&mut self) -> ::Number {
     use self::Token::*;
     match self.lexer.get_token() {
-      Some(Ident(ident)) => {
-        match &*ident {
-          "IP" => ::Memory(0x0),
-          "SP" => ::Memory(0x1),
-          "BP" => ::Memory(0x2),
-          "SC" => ::Memory(0x3),
-          reg => {
-            eprintln!("Unrecognized register memory name: {}", reg);
-            process::exit(1);
-          }
-        }
-      }
+      Some(Ident(ident)) => ::Number::Label(ident),
       Some(Number(n)) => {
-        ::Memory(n)
+        ::Number::Immediate(n)
       }
       Some(Label(label)) => {
-        eprintln!("Label not supported here: {}", label);
-        process::exit(1);
-      }
-      None => {
-        eprintln!("Unexpected EOF");
-        process::exit(1);
-      }
-    }
-  }
-  fn get_label(&mut self) -> ::Label {
-    use self::Token::*;
-    match self.lexer.get_token() {
-      Some(Label(label)) => {
-        eprintln!("Label definition not expected: `{}'", label);
-        process::exit(1);
-      }
-      Some(Ident(ident)) => {
-        ::Label(ident)
-      }
-      Some(Number(n)) => {
-        eprintln!("Label expected, found number: 0x{:x}", n);
+        eprintln!("Did not expect label definition: {}", label);
         process::exit(1);
       }
       None => {
@@ -80,6 +51,22 @@ impl Iterator for Parser {
 
   fn next(&mut self) -> Option<OpOrLabel> {
     use self::Token::*;
+    fn arith(this: &mut Parser, variant: OpcodeVariant) -> Opcode {
+      Opcode {
+        variant: variant,
+        reg: this.get_rm(),
+        mem: this.get_num(),
+      }
+    }
+    fn jump(
+      this: &mut Parser, variant: fn(::Number) -> OpcodeVariant
+    ) -> Opcode {
+      Opcode {
+        reg: this.get_rm(),
+        mem: this.get_num(),
+        variant: variant(this.get_num()),
+      }
+    }
     match self.lexer.get_token() {
       Some(Label(label)) => {
         Some(OpOrLabel::Label(label, self.offset))
@@ -87,65 +74,27 @@ impl Iterator for Parser {
       Some(Ident(ident)) => {
         Some(OpOrLabel::Op(
           match &*ident {
-            "MI" => {
-              Opcode::MoveImmediate(self.get_rm(), self.get_mem().0)
-            }
-            "MV" => {
-              Opcode::Move(self.get_rm(), self.get_mem())
-            }
-            "MD" => {
-              Opcode::MoveDeref(self.get_rm(), self.get_mem())
-            }
-            "LD" => {
-              Opcode::Load(self.get_rm(), self.get_mem())
-            }
-            "ST" => {
-              Opcode::Store(self.get_rm(), self.get_mem())
-            }
-            "AD" => {
-              Opcode::Add(self.get_rm(), self.get_mem())
-            }
-            "SB" => {
-              Opcode::Sub(self.get_rm(), self.get_mem())
-            }
-            "ND" => {
-              Opcode::And(self.get_rm(), self.get_mem())
-            }
-            "OR" => {
-              Opcode::Or(self.get_rm(), self.get_mem())
-            }
-            "XR" => {
-              Opcode::Xor(self.get_rm(), self.get_mem())
-            }
-            "SR" => {
-              Opcode::ShiftRight(self.get_rm(), self.get_mem())
-            }
-            "SL" => {
-              Opcode::ShiftLeft(self.get_rm(), self.get_mem())
-            }
-            "SA" => {
-              Opcode::ShiftArithmetic(self.get_rm(), self.get_mem())
-            }
-            "JG" => {
-              Opcode::JumpGreater(
-                self.get_rm(), self.get_mem(), self.get_label(),
-              )
-            }
-            "JL" => {
-              Opcode::JumpLesser(
-                self.get_rm(), self.get_mem(), self.get_label(),
-              )
-            }
-            "JQ" => {
-              Opcode::JumpEqual(
-                self.get_rm(), self.get_mem(), self.get_label(),
-              )
-            }
-            "HF" => {
-              Opcode::JumpEqual(
-                ::Register(0), ::Memory(0), ::Label(String::new()),
-              )
-            }
+            "MI" => arith(self, OpcodeVariant::MoveImmediate),
+            "MV" => arith(self, OpcodeVariant::Move),
+            "MD" => arith(self, OpcodeVariant::MoveDeref),
+            "LD" => arith(self, OpcodeVariant::Load),
+            "ST" => arith(self, OpcodeVariant::Store),
+            "AD" => arith(self, OpcodeVariant::Add),
+            "SB" => arith(self, OpcodeVariant::Sub),
+            "ND" => arith(self, OpcodeVariant::And),
+            "OR" => arith(self, OpcodeVariant::Or),
+            "XR" => arith(self, OpcodeVariant::Xor),
+            "SR" => arith(self, OpcodeVariant::ShiftRight),
+            "SL" => arith(self, OpcodeVariant::ShiftLeft),
+            "SA" => arith(self, OpcodeVariant::ShiftArithmetic),
+            "JG" => jump(self, OpcodeVariant::JumpGreater),
+            "JL" => jump(self, OpcodeVariant::JumpLesser),
+            "JQ" => jump(self, OpcodeVariant::JumpEqual),
+            "HF" => Opcode {
+              variant: OpcodeVariant::JumpEqual(::Number::Label(String::new())),
+              reg: ::Number::Immediate(0),
+              mem: ::Number::Immediate(0),
+            },
             op => {
               eprintln!("Unsupported op code: {}", op);
               process::exit(1);

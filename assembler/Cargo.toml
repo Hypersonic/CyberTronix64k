@@ -4,3 +4,6 @@ version = "0.1.0"
 authors = ["ubsan <npmazzuca@gmail.com>"]
 
 [dependencies]
+
+[profile.release]
+panic = "abort"
