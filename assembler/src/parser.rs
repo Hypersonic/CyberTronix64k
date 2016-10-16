@@ -1,112 +1,237 @@
 use std::process;
+use std::collections::HashMap;
 use {Opcode, OpcodeVariant};
 
-pub enum OpOrLabel {
-  Op(Opcode),
-  Label(String, u16),
+enum Directive {
+  Op(String, Vec<Token>),
+  Label(String),
+  Const(String, Token),
 }
 
 pub struct Parser {
-  lexer: Lexer,
-  offset: u16,
+  directives: Vec<Directive>,
+  labels: HashMap<String, u16>,
+  idx: usize,
 }
 
 impl Parser {
   pub fn new(input: Vec<u8>) -> Self {
-    Parser { lexer: Lexer::new(input), offset: 0 }
+    let mut lexer = Lexer::new(input);
+    let mut this = Parser {
+      directives: Vec::new(),
+      labels: hashmap! {
+        "IP".to_owned() => 0x0,
+        "SP".to_owned() => 0x1,
+        "BP".to_owned() => 0x2,
+        "SC".to_owned() => 0x3,
+      },
+      idx: 0,
+    };
+
+    while let Some(tok) = lexer.get_token() {
+      match tok {
+        Token::Ident(ident) => {
+          if ident == "EQU" {
+            let lhs = if let Some(tok) = lexer.get_token() {
+              match tok {
+                Token::Ident(id) => id,
+                Token::Label(label) =>
+                  abort!("Unexpected colon in const definition: {}", label),
+                Token::Number(n) =>
+                  abort!("Attempted to define a number: {}", n),
+              }
+            } else {
+              abort!("Unexpected EOF");
+            };
+            let rhs = if let Some(tok) = lexer.get_token() {
+              tok
+            } else {
+              abort!("Unexpected EOF");
+            };
+            this.directives.push(Directive::Const(lhs, rhs));
+          } else if ident == "MACRO" {
+            abort!("Reserved identifier: MACRO");
+          } else {
+            let mut args = Vec::new();
+            for _ in 0..this.size_of_op(&ident) {
+              match lexer.get_token() {
+                // TODO(ubsan): this won't work with arithmetic
+                Some(tok) => args.push(tok),
+                None => abort!("Unexpected EOF"),
+              }
+            }
+            this.directives.push(Directive::Op(ident, args));
+          }
+        }
+        Token::Number(n) => abort!("Numbers aren't allowed in op position"),
+        Token::Label(label) => this.directives.push(Directive::Label(label)),
+      }
+    }
+
+    // normal labels
+    let mut inst_offset = 0;
+    for directive in &this.directives {
+      match *directive {
+        Directive::Label(ref s) => {
+          // can optimize this to mem::replace(String::new())
+          match this.labels.insert(s.clone(), inst_offset) {
+            Some(s) => {
+              abort!("Attempted to redefine label: {}", s);
+            }
+            None => {}
+          }
+        }
+        Directive::Op(ref op, _) => {
+          inst_offset += this.size_of_op(op);
+        }
+        Directive::Const(..) => {}
+      }
+    }
+
+    // equ constants
+    for directive in &this.directives {
+      match *directive {
+        Directive::Const(ref s, ref tok) => {
+          let rhs = match *tok {
+            Token::Ident(ref ident) => {
+              if let Some(&n) = this.labels.get(ident) {
+                n
+              } else {
+                abort!(
+                  "Attempted to use undefined label in a constant definition: {}",
+                  ident,
+                );
+              }
+            }
+            Token::Number(n) => n,
+            Token::Label(ref label) => {
+              abort!("Unexpected label definition: {}", label);
+            }
+          };
+          match this.labels.insert(s.clone(), rhs) {
+            Some(s) => {
+              abort!("Attempted to redefine label: {}", s);
+            }
+            None => {}
+          }
+        }
+        Directive::Label(..) => {}
+        Directive::Op(..) => {}
+      }
+    }
+
+    this
   }
 
-  fn get_rm(&mut self) -> ::Number {
-    let ret = self.get_num();
-    match ret {
-      ::Number::Immediate(n) if n >= 0x1000 => {
-        eprintln!("Overflowing literal for register memory: 0x{:x}", n);
-        process::exit(1);
+  // TODO(ubsan): macros
+  fn size_of_op(&self, op: &str) -> u16 {
+    match op {
+      "MI" | "MV" | "MD" | "LD" | "ST" | "AD" | "SB"
+      | "ND" | "OR" | "XR" | "SR" | "SL" | "SA" => {
+        2
       }
-      _ => {}
+      "JG" | "JL" | "JQ" => {
+        3
+      }
+      s => abort!("Unknown opcode: {}", s),
     }
-    ret
   }
-  fn get_num(&mut self) -> ::Number {
-    use self::Token::*;
-    match self.lexer.get_token() {
-      Some(Ident(ident)) => ::Number::Label(ident),
-      Some(Number(n)) => {
-        ::Number::Immediate(n)
-      }
-      Some(Label(label)) => {
-        eprintln!("Did not expect label definition: {}", label);
-        process::exit(1);
-      }
-      None => {
-        eprintln!("Unexpected EOF");
-        process::exit(1);
-      }
+
+  fn next_directive(&mut self) -> Option<Directive> {
+    if self.idx < self.directives.len() {
+      let ret = ::std::mem::replace(
+        &mut self.directives[self.idx], Directive::Label(String::new())
+      );
+      self.idx += 1;
+      Some(ret)
+    } else {
+      None
     }
   }
 }
 
 impl Iterator for Parser {
-  type Item = OpOrLabel;
+  type Item = Opcode;
 
-  fn next(&mut self) -> Option<OpOrLabel> {
-    use self::Token::*;
-    fn arith(this: &mut Parser, variant: OpcodeVariant) -> Opcode {
-      Opcode {
-        variant: variant,
-        reg: this.get_rm(),
-        mem: this.get_num(),
+  fn next(&mut self) -> Option<Opcode> {
+    fn get_arg(this: &Parser, args: &[Token], n: usize) -> u16 {
+      match args[n] {
+        Token::Number(n) => n,
+        Token::Ident(ref id) => match this.labels.get(id) {
+          Some(&n) => n,
+          None => {
+            println!("labels: {:?}", this.labels);
+            abort!("Use of an undefined label: {}", id);
+          }
+        },
+        Token::Label(ref label) =>
+          abort!("Unexpected label definition: {}", label),
       }
+    }
+    fn arith(
+      this: &Parser, op: OpcodeVariant, args: Vec<Token>
+    ) -> Option<Opcode> {
+      let reg = get_arg(this, &args, 0);
+      let num = get_arg(this, &args, 1);
+      if reg >= 0x1000 {
+        abort!("Register memory is out of range: {}", reg);
+      }
+      Some(Opcode {
+        variant: op,
+        reg: reg,
+        num: num,
+      })
     }
     fn jump(
-      this: &mut Parser, variant: fn(::Number) -> OpcodeVariant
-    ) -> Opcode {
-      Opcode {
-        reg: this.get_rm(),
-        mem: this.get_num(),
-        variant: variant(this.get_num()),
+      this: &Parser, op: fn(u16) -> OpcodeVariant, args: Vec<Token>
+    ) -> Option<Opcode> {
+      let reg = get_arg(this, &args, 0);
+      if reg >= 0x1000 {
+        abort!("Register memory is out of range: {}", reg);
       }
+      let num = get_arg(this, &args, 1);
+      let label = get_arg(this, &args, 2);
+      Some(Opcode {
+        variant: op(label),
+        reg: reg,
+        num: num,
+      })
     }
-    match self.lexer.get_token() {
-      Some(Label(label)) => {
-        Some(OpOrLabel::Label(label, self.offset))
-      }
-      Some(Ident(ident)) => {
-        Some(OpOrLabel::Op(
-          match &*ident {
-            "MI" => arith(self, OpcodeVariant::MoveImmediate),
-            "MV" => arith(self, OpcodeVariant::Move),
-            "MD" => arith(self, OpcodeVariant::MoveDeref),
-            "LD" => arith(self, OpcodeVariant::Load),
-            "ST" => arith(self, OpcodeVariant::Store),
-            "AD" => arith(self, OpcodeVariant::Add),
-            "SB" => arith(self, OpcodeVariant::Sub),
-            "ND" => arith(self, OpcodeVariant::And),
-            "OR" => arith(self, OpcodeVariant::Or),
-            "XR" => arith(self, OpcodeVariant::Xor),
-            "SR" => arith(self, OpcodeVariant::ShiftRight),
-            "SL" => arith(self, OpcodeVariant::ShiftLeft),
-            "SA" => arith(self, OpcodeVariant::ShiftArithmetic),
-            "JG" => jump(self, OpcodeVariant::JumpGreater),
-            "JL" => jump(self, OpcodeVariant::JumpLesser),
-            "JQ" => jump(self, OpcodeVariant::JumpEqual),
-            "HF" => Opcode {
-              variant: OpcodeVariant::JumpEqual(::Number::Label(String::new())),
-              reg: ::Number::Immediate(0),
-              mem: ::Number::Immediate(0),
-            },
-            op => {
-              eprintln!("Unsupported op code: {}", op);
-              process::exit(1);
+    if let Some(directive) = self.next_directive() {
+      match directive {
+        Directive::Op(s, toks) => {
+          match &*s {
+            "MI" => arith(self, OpcodeVariant::MoveImmediate, toks),
+            "MV" => arith(self, OpcodeVariant::Move, toks),
+            "MD" => arith(self, OpcodeVariant::MoveDeref, toks),
+            "LD" => arith(self, OpcodeVariant::Load, toks),
+            "ST" => arith(self, OpcodeVariant::Store, toks),
+            "AD" => arith(self, OpcodeVariant::Add, toks),
+            "SB" => arith(self, OpcodeVariant::Sub, toks),
+            "ND" => arith(self, OpcodeVariant::And, toks),
+            "OR" => arith(self, OpcodeVariant::Or, toks),
+            "XR" => arith(self, OpcodeVariant::Xor, toks),
+            "SR" => arith(self, OpcodeVariant::ShiftRight, toks),
+            "SL" => arith(self, OpcodeVariant::ShiftLeft, toks),
+            "SA" => arith(self, OpcodeVariant::ShiftArithmetic, toks),
+            "JG" => jump(self, OpcodeVariant::JumpGreater, toks),
+            "JL" => jump(self, OpcodeVariant::JumpLesser, toks),
+            "JQ" => jump(self, OpcodeVariant::JumpEqual, toks),
+            _ => unreachable!(),
+          }
+        }
+        Directive::Label(..) | Directive::Const(..) => {
+          while let Some(dir) = self.directives.get(self.idx) {
+            match *dir {
+              Directive::Label(..) | Directive::Const(..) => self.idx += 1,
+              _ => break,
             }
           }
-        ))
+          self.next()
+        }
       }
-      Some(Number(n)) => {
-        eprintln!("Unexpected number literal: 0x{:x}", n);
-        process::exit(1);
-      }
-      None => None,
+    } else {
+      None
     }
   }
 }
@@ -158,11 +283,14 @@ impl Lexer {
     fn is_alpha(c: u8) -> bool {
       (c >= b'a' && c <= b'z') || (c >= b'A' && c <= b'Z')
     }
+    fn is_ident_start(c: u8) -> bool {
+      is_alpha(c) || c == b'_'
+    }
     fn is_num(c: u8) -> bool {
       c >= b'0' && c <= b'9'
     }
-    fn is_alnum(c: u8) -> bool {
-      is_alpha(c) || is_num(c)
+    fn is_ident(c: u8) -> bool {
+      is_ident_start(c) || is_num(c)
     }
     fn is_allowed(c: u8, base: u32) -> bool {
       match base {
@@ -181,11 +309,11 @@ impl Lexer {
         }
         self.get_token()
       }
-      Some(ch) if is_alpha(ch) => {
+      Some(ch) if is_ident_start(ch) => {
         let mut ret = Vec::new();
         ret.push(ch);
         while let Some(c) = self.peek_char() {
-          if is_alnum(c) {
+          if is_ident(c) {
             self.get_char();
             ret.push(c);
           } else if c == b':' {
@@ -222,10 +350,9 @@ impl Lexer {
             base = 16;
             self.get_char();
           } else {
-            eprintln!(
+            abort!(
               "Unsupported character in a number literal: {}", peek as char
             );
-            process::exit(1);
           }
         }
 
@@ -234,10 +361,11 @@ impl Lexer {
             self.get_char();
             ret.push(ch);
           } else if is_alpha(ch) {
-            eprintln!(
-              "Unsupported character in a number literal: {}", ch as char
+            abort!(
+              "Unsupported character in a base-{} literal: {}",
+              base,
+              ch as char,
             );
-            process::exit(1);
           } else {
             break;
           }
@@ -252,19 +380,17 @@ impl Lexer {
           acc = match acc.checked_mul(base).and_then(|a| a.checked_add(add)) {
               Some(a) => a,
               None => {
-                eprintln!(
+                abort!(
                   "Attempted to write an overflowing number literal: {}",
                   unsafe{::std::str::from_utf8_unchecked(&ret)},
                 );
-                process::exit(1);
               }
             }
         }
         Some(Token::Number(acc))
       }
       Some(ch) => {
-        eprintln!("Unsupported character: `{}' ({})", ch as char, ch);
-        process::exit(1);
+        abort!("Unsupported character: `{}' ({})", ch as char, ch);
       }
       None => None,
     }
