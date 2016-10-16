@@ -253,7 +253,9 @@ impl Lexer {
         let mut ret = Vec::new();
         if ch == b'0' {
           let peek = self.peek_char().unwrap_or(b'D');
-          if is_num(peek) {
+          if is_space(peek) || peek == b',' {
+            return Some(Token::Number(0));
+          } else if is_num(peek) {
             while let Some(ch) = self.peek_char() {
               if ch == b'0' { self.get_char(); }
               else { break; }

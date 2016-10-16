@@ -5,7 +5,7 @@
 
 #include "memory.h"
 
-memory mem;
+memory main_memory;
 
 #define INST_PTR_LOC 0x0
 #define STK_PTR_LOC  0x1
@@ -16,222 +16,202 @@ memory mem;
 
 #define INSTR(opcode, value, family, doc) opcode = value,
 enum op {
-    INSTR(MV ,   0b0000, ARITH, "Move")
-    INSTR(XG ,   0b0001, ARITH, "Exchange")
-    INSTR(AD ,   0b0010, ARITH, "Add")
-    INSTR(SB ,   0b0011, ARITH, "Subtract")
-    INSTR(ND ,   0b0100, ARITH, "And (bitwise)")
-    INSTR(OR ,   0b0101, ARITH, "Or (bitwise)")
-    INSTR(XR ,   0b0110, ARITH, "Xor (bitwise)")
-    INSTR(SR ,   0b0111, ARITH, "Shift Right")
-    INSTR(SL ,   0b1000, ARITH, "Shift Left")
-    INSTR(SA ,   0b1001, ARITH, "Arithmetic Shift Right")
-    INSTR(MI ,   0b1010, MOV_IMM, "Move Immediate")
-    INSTR(MD ,   0b1011, MOV_DER, "Move Dereference")
-    INSTR(JG ,   0b1100, JUMP, "Jump if Greater-Than")
-    INSTR(JL ,   0b1101, JUMP, "Jump if Less-Than")
-    INSTR(JQ ,   0b1110, JUMP, "Jump if Equal-To")
-    INSTR(HF1,   0b1111, HALT, "Halt and Catch Fire")
+    INSTR(MI, 0x0, ARITH, "Move Immediate")
+    INSTR(MV, 0x1, ARITH, "Move Memory")
+    INSTR(MD, 0x2, ARITH, "Move Dereference")
+    INSTR(LD, 0x3, ARITH, "Load Memory")
+    INSTR(ST, 0x4, ARITH, "Store Memory")
+    INSTR(AD, 0x5, ARITH, "Add Memory")
+    INSTR(SB, 0x6, ARITH, "Subtract Memory")
+    INSTR(ND, 0x7, ARITH, "Bitwise And Memory")
+    INSTR(OR, 0x8, ARITH, "Bitwise Or Memory")
+    INSTR(XR, 0x9, ARITH, "Bitwise Xor Memory")
+    INSTR(SR, 0xA, ARITH, "Right Shift")
+    INSTR(SL, 0xB, ARITH, "Left Shift")
+    INSTR(SA, 0xC, ARITH, "Right Shift (arithmetic)")
+    INSTR(JG, 0xD, LOGIC, "Jump if Greater-Than")
+    INSTR(JL, 0xE, LOGIC, "Jump if Less-Than")
+    INSTR(JQ, 0xF, LOGIC, "Jump if Equal-To")
 };
 
-#define OPCODE(addr) (op((mem[addr] & 0b1111000000000000)>>12))
+// macro to print instruction traces, + ip
+#ifdef DO_TRACE
+#  define P_TRACE(fmt, ...) fprintf(stderr, "0x%04x: " fmt "\n", ip, __VA_ARGS__)
+#else
+#  define P_TRACE(fmt, ...)
+#endif
+
+#define OPCODE(addr) (op((main_memory[addr] & 0xF000)>>12))
 
 // Arith decoder macros
 #define ARITH_LEN_BYTES 4
-#define ARITH_DST(addr) ((mem[addr] & 0b0000111111111111))
-#define ARITH_SRC(addr) ((mem[addr+1] & 0b1111111111111111))
+#define ARITH_RM(addr)  (main_memory[addr+0] & 0x0FFF)
+#define ARITH_MEM(addr) (main_memory[addr+1] & 0xFFFF)
+#define ARITH_IMM(addr) (main_memory[addr+1] & 0xFFFF)
 
-// Move Imm decoder macros
-#define MOVE_IMM_LEN_BYTES 4
-#define MOVE_IMM_DST(addr) ((mem[addr] & 0b0000111111111111))
-#define MOVE_IMM_IMM(addr) ((mem[addr+1] & 0b1111111111111111))
 
-// Move Deref decoder macros
-#define MOVE_DER_LEN_BYTES 4
-#define MOVE_DER_DST(addr) ((mem[addr] & 0b0000111111111111))
-#define MOVE_DER_SRC(addr) ((mem[addr+1] & 0b1111111111111111))
-
-// Jump decoder macros
-// Jumps are:
-// if (lhs op rhs) ip = addr
-#define JUMP_LEN_BYTES 6
-#define JUMP_LHS(addr) ((mem[addr] & 0b0000111111111111))
-#define JUMP_RHS(addr) ((mem[addr+1] & 0b1111111111111111))
-#define JUMP_ADDR(addr) ((mem[addr+2] & 0b1111111111111111))
+// Logic decoder macros
+#define LOGIC_LEN_BYTES 6
+#define LOGIC_RM(addr)  (main_memory[addr+0] & 0x0FFF)
+#define LOGIC_MEM(addr) (main_memory[addr+1] & 0xFFFF)
+#define LOGIC_IMM(addr) (main_memory[addr+2] & 0xFFFF)
 
 
 void interp_instr() {
-    mem_t ip = mem[INST_PTR_LOC];
+    mem_t ip = main_memory[INST_PTR_LOC];
     mem_t next_ip = -1;
     enum op opcode = OPCODE(ip);
-    mem_t dst, src, imm;
-    mem_t lhs, rhs, addr;
-    mem_t temp;
+    mem_t rm, imm, mem; // operands
+    int16_t signed_val; // for SA
     switch (opcode) {
+        case MI:
+            next_ip = ip + (ARITH_LEN_BYTES>>1);
+            main_memory[INST_PTR_LOC] = next_ip;
+            rm = ARITH_RM(ip);
+            imm = ARITH_IMM(ip);
+            P_TRACE("MI 0x%04x, 0x%04x", rm, mem);
+            main_memory[rm] = imm; 
+            break;
         case MV:
             next_ip = ip + (ARITH_LEN_BYTES>>1);
-            mem[INST_PTR_LOC] = next_ip; // update instruction pointer
-
-            dst = ARITH_DST(ip);
-            src = ARITH_SRC(ip);
-            printf("0x%04x: MV 0x%04x, 0x%04x\n", ip, dst, src);
-            mem[dst] = mem[src];
+            main_memory[INST_PTR_LOC] = next_ip;
+            rm = ARITH_RM(ip);
+            mem = ARITH_MEM(ip);
+            P_TRACE("MV 0x%04x, 0x%04x", rm, mem);
+            main_memory[rm] = main_memory[mem];
             break;
-        case XG:
-
+        case MD:
             next_ip = ip + (ARITH_LEN_BYTES>>1);
-            mem[INST_PTR_LOC] = next_ip; // update instruction pointer
-
-            dst = ARITH_DST(ip);
-            src = ARITH_SRC(ip);
-            printf("0x%04x: XG 0x%04x, 0x%04x\n", ip, dst, src);
-            // could swap with xor, but this is clear
-            temp = mem[dst];
-            mem[dst] = mem[src];
-            mem[src] = temp;
+            main_memory[INST_PTR_LOC] = next_ip;
+            rm = ARITH_RM(ip);
+            mem = ARITH_MEM(ip);
+            P_TRACE("MD 0x%04x, 0x%04x", rm, mem);
+            main_memory[rm] = main_memory[main_memory[mem]];
+            break;
+        case LD:
+            next_ip = ip + (ARITH_LEN_BYTES>>1);
+            main_memory[INST_PTR_LOC] = next_ip;
+            rm = ARITH_RM(ip);
+            mem = ARITH_MEM(ip);
+            P_TRACE("LD 0x%04x, 0x%04x", rm, mem);
+            main_memory[main_memory[rm]] = main_memory[mem];
+            break;
+        case ST:
+            next_ip = ip + (ARITH_LEN_BYTES>>1);
+            main_memory[INST_PTR_LOC] = next_ip;
+            rm = ARITH_RM(ip);
+            mem = ARITH_MEM(ip);
+            P_TRACE("ST 0x%04x, 0x%04x", rm, mem);
+            main_memory[main_memory[mem]] = main_memory[rm];
             break;
         case AD:
             next_ip = ip + (ARITH_LEN_BYTES>>1);
-            mem[INST_PTR_LOC] = next_ip; // update instruction pointer
-
-            dst = ARITH_DST(ip);
-            src = ARITH_SRC(ip);
-            printf("0x%04x: AD 0x%04x, 0x%04x\n", ip, dst, src);
-            mem[dst] = mem[dst] + mem[src];
+            main_memory[INST_PTR_LOC] = next_ip;
+            rm = ARITH_RM(ip);
+            mem = ARITH_MEM(ip);
+            P_TRACE("AD 0x%04x, 0x%04x", rm, mem);
+            main_memory[rm] += main_memory[mem];
             break;
         case SB:
             next_ip = ip + (ARITH_LEN_BYTES>>1);
-            mem[INST_PTR_LOC] = next_ip; // update instruction pointer
-            
-            dst = ARITH_DST(ip);
-            src = ARITH_SRC(ip);
-            printf("0x%04x: SB 0x%04x, 0x%04x\n", ip, dst, src);
-            mem[dst] = mem[dst] - mem[src];
+            main_memory[INST_PTR_LOC] = next_ip;
+            rm = ARITH_RM(ip);
+            mem = ARITH_MEM(ip);
+            P_TRACE("SB 0x%04x, 0x%04x", rm, mem);
+            main_memory[rm] -= main_memory[mem];
             break;
         case ND:
             next_ip = ip + (ARITH_LEN_BYTES>>1);
-            mem[INST_PTR_LOC] = next_ip; // update instruction pointer
-            
-            dst = ARITH_DST(ip);
-            src = ARITH_SRC(ip);
-            printf("0x%04x: ND 0x%04x, 0x%04x\n", ip, dst, src);
-            mem[dst] = mem[dst] & mem[src];
+            main_memory[INST_PTR_LOC] = next_ip;
+            rm = ARITH_RM(ip);
+            mem = ARITH_MEM(ip);
+            P_TRACE("ND 0x%04x, 0x%04x", rm, mem);
+            main_memory[rm] &= main_memory[mem];
             break;
         case OR:
             next_ip = ip + (ARITH_LEN_BYTES>>1);
-            mem[INST_PTR_LOC] = next_ip; // update instruction pointer
-            
-            dst = ARITH_DST(ip);
-            src = ARITH_SRC(ip);
-            printf("0x%04x: OR 0x%04x, 0x%04x\n", ip, dst, src);
-            mem[dst] = mem[dst] | mem[src];
+            main_memory[INST_PTR_LOC] = next_ip;
+            rm = ARITH_RM(ip);
+            mem = ARITH_MEM(ip);
+            P_TRACE("OR 0x%04x, 0x%04x", rm, mem);
+            main_memory[rm] |= main_memory[mem];
             break;
         case XR:
             next_ip = ip + (ARITH_LEN_BYTES>>1);
-            mem[INST_PTR_LOC] = next_ip; // update instruction pointer
-            
-            dst = ARITH_DST(ip);
-            src = ARITH_SRC(ip);
-            printf("0x%04x: XR 0x%04x, 0x%04x\n", ip, dst, src);
-            mem[dst] = mem[dst] ^ mem[src];
+            main_memory[INST_PTR_LOC] = next_ip;
+            rm = ARITH_RM(ip);
+            mem = ARITH_MEM(ip);
+            P_TRACE("XR 0x%04x, 0x%04x", rm, mem);
+            main_memory[rm] ^= main_memory[mem];
             break;
         case SR:
             next_ip = ip + (ARITH_LEN_BYTES>>1);
-            mem[INST_PTR_LOC] = next_ip; // update instruction pointer
-            
-            dst = ARITH_DST(ip);
-            src = ARITH_SRC(ip);
-            printf("0x%04x: SR 0x%04x, 0x%04x\n", ip, dst, src);
-            mem[dst] = mem[dst] >> mem[src];
+            main_memory[INST_PTR_LOC] = next_ip;
+            rm = ARITH_RM(ip);
+            mem = ARITH_MEM(ip);
+            P_TRACE("SR 0x%04x, 0x%04x", rm, mem);
+            main_memory[rm] >>= main_memory[mem];
             break;
         case SL:
             next_ip = ip + (ARITH_LEN_BYTES>>1);
-            mem[INST_PTR_LOC] = next_ip; // update instruction pointer
-            
-            dst = ARITH_DST(ip);
-            src = ARITH_SRC(ip);
-            printf("0x%04x: SL 0x%04x, 0x%04x\n", ip, dst, src);
-            mem[dst] = mem[dst] << mem[src];
+            main_memory[INST_PTR_LOC] = next_ip;
+            rm = ARITH_RM(ip);
+            mem = ARITH_MEM(ip);
+            P_TRACE("SL 0x%04x, 0x%04x", rm, mem);
+            main_memory[rm] <<= main_memory[mem];
             break;
         case SA:
             next_ip = ip + (ARITH_LEN_BYTES>>1);
-            mem[INST_PTR_LOC] = next_ip; // update instruction pointer
-            
-            dst = ARITH_DST(ip);
-            src = ARITH_SRC(ip);
-            printf("0x%04x: SA 0x%04x, 0x%04x\n", ip, dst, src);
-            mem[dst] = (uint16_t) (((int16_t) mem[dst]) >> mem[src]);
-            break;
-        case MI:
-            next_ip = ip + (MOVE_IMM_LEN_BYTES>>1);
-            mem[INST_PTR_LOC] = next_ip; // update instruction pointer
-            
-            dst = MOVE_IMM_DST(ip);
-            imm = MOVE_IMM_IMM(ip);
-            printf("0x%04x: MI 0x%04x, 0x%04x\n", ip, dst, imm);
-            mem[dst] = imm;
-            break;
-        case MD:
-            next_ip = ip + (MOVE_DER_LEN_BYTES>>1);
-            mem[INST_PTR_LOC] = next_ip; // update instruction pointer
-            
-            dst = MOVE_DER_DST(ip);
-            src = MOVE_DER_SRC(ip);
-            printf("0x%04x: MD 0x%04x, 0x%04x\n", ip, dst, imm);
-            mem[dst] = mem[imm];
+            main_memory[INST_PTR_LOC] = next_ip;
+            rm = ARITH_RM(ip);
+            mem = ARITH_MEM(ip);
+            P_TRACE("SA 0x%04x, 0x%04x", rm, mem);
+            signed_val = int16_t(main_memory[rm]);
+            signed_val >>= main_memory[mem];
+            main_memory[rm] = uint16_t(signed_val);
             break;
         case JG:
-            lhs = JUMP_LHS(ip);
-            rhs = JUMP_RHS(ip);
-            addr = JUMP_ADDR(ip);
-            printf("0x%04x: JG 0x%04x, 0x%04x, 0x%04x\n", ip, lhs, rhs, addr);
-
-            if (lhs > rhs) {
-                next_ip = ip + addr;
-            } else {
-                next_ip = ip + (JUMP_LEN_BYTES>>1);
+            next_ip = ip + (LOGIC_LEN_BYTES>>1);
+            main_memory[INST_PTR_LOC] = next_ip;
+            rm = LOGIC_RM(ip);
+            mem = LOGIC_MEM(ip);
+            imm = LOGIC_IMM(ip);
+            P_TRACE("JG 0x%04x, 0x%04x, 0x%04x", rm, mem, imm);
+            if (main_memory[rm] > main_memory[mem]) {
+                next_ip = ip + imm;
+                main_memory[INST_PTR_LOC] = next_ip;
             }
-
-            mem[INST_PTR_LOC] = next_ip; // update instruction pointer
-            
             break;
         case JL:
-            lhs = JUMP_LHS(ip);
-            rhs = JUMP_RHS(ip);
-            addr = JUMP_ADDR(ip);
-            printf("0x%04x: JL 0x%04x, 0x%04x, 0x%04x\n", ip, lhs, rhs, addr);
-
-            if (lhs < rhs) {
-                next_ip = ip + addr;
-            } else {
-                next_ip = ip + (JUMP_LEN_BYTES>>1);
+            next_ip = ip + (LOGIC_LEN_BYTES>>1);
+            main_memory[INST_PTR_LOC] = next_ip;
+            rm = LOGIC_RM(ip);
+            mem = LOGIC_MEM(ip);
+            imm = LOGIC_IMM(ip);
+            P_TRACE("JG 0x%04x, 0x%04x, 0x%04x", rm, mem, imm);
+            if (main_memory[rm] < main_memory[mem]) {
+                next_ip = ip + imm;
+                main_memory[INST_PTR_LOC] = next_ip;
             }
-
-            mem[INST_PTR_LOC] = next_ip; // update instruction pointer
-            
             break;
         case JQ:
-            lhs = JUMP_LHS(ip);
-            rhs = JUMP_RHS(ip);
-            addr = JUMP_ADDR(ip);
-            printf("0x%04x: JQ 0x%04x, 0x%04x, 0x%04x\n", ip, lhs, rhs, addr);
-
-            if (lhs == rhs) {
-                next_ip = ip + addr;
-            } else {
-                next_ip = ip + (JUMP_LEN_BYTES>>1);
+            next_ip = ip + (LOGIC_LEN_BYTES>>1);
+            main_memory[INST_PTR_LOC] = next_ip;
+            rm = LOGIC_RM(ip);
+            mem = LOGIC_MEM(ip);
+            imm = LOGIC_IMM(ip);
+            P_TRACE("JG 0x%04x, 0x%04x, 0x%04x", rm, mem, imm);
+            if (rm == 0 && mem == 0 && imm == 0xFFFD) { // Actually an HF instruction
+                P_TRACE("%s", "(actually HF)"); // the P_TRACE macro needs an VARARG, so do it this way :/
+                // TODO: switch to HACF CPU mode
+                abort();
+            } else if (main_memory[rm] == main_memory[mem]) {
+                next_ip = ip + imm;
+                main_memory[INST_PTR_LOC] = next_ip;
             }
-
-            mem[INST_PTR_LOC] = next_ip; // update instruction pointer
-            
-            break;
-        case HF1:
-            printf("0x%04x: HF\n", ip);
-            abort(); // TODO: Actually halt and catch fire
-            
             break;
     }
-    mem.disp.redraw();
+    main_memory.flush_changes();
 }
 
 int main(int argc, char **argv) {
@@ -251,10 +231,10 @@ int main(int argc, char **argv) {
     size_t code_size = fread(code, 2, MAX_CODE_SIZE, fd);
 
     for (size_t i = 0; i < code_size; ++i) {
-        mem[CODE_START + i] = code[i];
+        main_memory[CODE_START + i] = code[i];
     }
 
-    mem[INST_PTR_LOC] = CODE_START;
+    main_memory[INST_PTR_LOC] = CODE_START;
 
     while (1) {
         interp_instr();

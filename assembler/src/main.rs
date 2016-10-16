@@ -232,7 +232,7 @@ fn main() {
         }
       };
 
-      let jr = label.wrapping_sub(offset);
+      let jr = label.wrapping_sub(offset + 3);
 
       if lge > 0 {
         write(out, &[(0xD << 12) | reg.0, mem.0, jr]);
@@ -259,8 +259,8 @@ fn main() {
       ShiftArithmetic(reg, mem) =>
         write(&mut out, &[(0xC << 12) | reg.0, mem.0]),
       JumpGreater(reg, mem, label) => jump(&mut out, 1, reg, mem, label),
-      JumpLesser(reg, mem, label) => jump(&mut out, 1, reg, mem, label),
-      JumpEqual(reg, mem, label) => jump(&mut out, 1, reg, mem, label),
+      JumpLesser(reg, mem, label) => jump(&mut out, -1, reg, mem, label),
+      JumpEqual(reg, mem, label) => jump(&mut out, 0, reg, mem, label),
     }
   }
 }
