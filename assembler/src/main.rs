@@ -1,10 +1,7 @@
-#![allow(unused)]
-
 use std::env;
-use std::process;
 use std::fs::File;
 use std::io::{Write, Read};
-use std::fmt::{self, Debug, Display};
+use std::fmt::{self, Debug};
 
 #[macro_use]
 extern crate maplit;
@@ -36,21 +33,6 @@ pub enum OpcodeVariant {
   JumpGreater(u16),
   JumpLesser(u16),
   JumpEqual(u16),
-}
-
-impl Opcode {
-  fn size(&self) -> u16 {
-    use OpcodeVariant::*;
-    match self.variant {
-      MoveImmediate | Move | MoveDeref | Load | Store | Add | Sub
-      | And | Or | Xor | ShiftRight | ShiftLeft | ShiftArithmetic => {
-        2
-      }
-      JumpGreater(..) | JumpLesser(..) | JumpEqual(..) => {
-        3
-      }
-    }
-  }
 }
 
 impl Debug for Opcode {
@@ -139,7 +121,6 @@ fn main() {
         inpfilename.to_string_lossy(),
         e,
       );
-      process::exit(1);
     }
   };
   let mut out = match File::create(outfilename) {
@@ -185,12 +166,10 @@ fn main() {
         }
       }
     };
-    let mut arith = |out: &mut File, opcode: u16, reg: u16, mem: u16| {
+    fn arith(out: &mut File, opcode: u16, reg: u16, mem: u16) {
       write(out, &[(opcode << 12) | reg, mem]);
     };
-    let mut jump = |
-      out: &mut File, opcode: u16, reg: u16, mem: u16, label: u16
-    | {
+    fn jump(out: &mut File, opcode: u16, reg: u16, mem: u16, label: u16) {
       write(out, &[(opcode << 12) | reg, mem, label]);
     };
 

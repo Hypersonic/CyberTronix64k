@@ -2,8 +2,59 @@ use std::process;
 use std::collections::HashMap;
 use {Opcode, OpcodeVariant};
 
+const INST_OFFSET_BASE: u16 = 0x1000;
+
+const REG_IP: u16 = 0x0;
+const REG_SP: u16 = 0x1;
+const REG_BP: u16 = 0x2;
+const REG_SC: u16 = 0x3;
+
+#[derive(Copy, Clone)]
+enum BaseOp {
+  MoveImmediate,
+  Move,
+  MoveDeref,
+  Load,
+  Store,
+  Add,
+  Sub,
+  And,
+  Or,
+  Xor,
+  ShiftRight,
+  ShiftLeft,
+  ShiftArithmetic,
+  JumpGreater,
+  JumpLesser,
+  JumpEqual,
+}
+
+impl BaseOp {
+  fn new(s: &str) -> Self {
+    match s {
+      "MI" => BaseOp::MoveImmediate,
+      "MV" => BaseOp::Move,
+      "MD" => BaseOp::MoveDeref,
+      "LD" => BaseOp::Load,
+      "ST" => BaseOp::Store,
+      "AD" => BaseOp::Add,
+      "SB" => BaseOp::Sub,
+      "ND" => BaseOp::And,
+      "OR" => BaseOp::Or,
+      "XR" => BaseOp::Xor,
+      "SR" => BaseOp::ShiftRight,
+      "SL" => BaseOp::ShiftLeft,
+      "SA" => BaseOp::ShiftArithmetic,
+      "JG" => BaseOp::JumpGreater,
+      "JL" => BaseOp::JumpLesser,
+      "JQ" => BaseOp::JumpEqual,
+      s => abort!("Undefined op: {}", s),
+    }
+  }
+}
+
 enum Directive {
-  Op(String, Vec<Token>),
+  Op(BaseOp, Vec<Token>),
   Label(String),
   Const(String, Token),
 }
@@ -11,6 +62,7 @@ enum Directive {
 pub struct Parser {
   directives: Vec<Directive>,
   labels: HashMap<String, u16>,
+  macros: HashMap<String, (u16, Vec<(BaseOp, Vec<Token>)>)>,
   idx: usize,
 }
 
@@ -20,56 +72,144 @@ impl Parser {
     let mut this = Parser {
       directives: Vec::new(),
       labels: hashmap! {
-        "IP".to_owned() => 0x0,
-        "SP".to_owned() => 0x1,
-        "BP".to_owned() => 0x2,
-        "SC".to_owned() => 0x3,
+        "IP".to_owned() => REG_IP,
+        "SP".to_owned() => REG_SP,
+        "BP".to_owned() => REG_BP,
+        "SC".to_owned() => REG_SC,
+      },
+      macros: hashmap! {
+        "HF".to_owned() => (0, vec![
+          (BaseOp::JumpEqual, vec![
+            Token::Number(REG_IP), Token::Number(REG_IP), Token::Here]),
+        ]),
+        "JP".to_owned() => (1, vec![
+          (BaseOp::Move, vec![
+            Token::Number(REG_IP), Token::MacroArg(0)]),
+        ]),
+        "JPI".to_owned() => (1, vec![
+          (BaseOp::MoveImmediate, vec![
+            Token::Number(REG_IP), Token::MacroArg(0)]),
+        ]),
+        "INC".to_owned() => (1, vec![
+          (BaseOp::MoveImmediate, vec![
+            Token::Number(REG_SC), Token::Number(1)]),
+          (BaseOp::Add, vec![
+            Token::MacroArg(0), Token::Number(REG_SC)]),
+        ]),
+        "DEC".to_owned() => (1, vec![
+          (BaseOp::MoveImmediate, vec![
+            Token::Number(REG_SC), Token::Number(1)]),
+          (BaseOp::Add, vec![
+            Token::MacroArg(0), Token::Number(REG_SC)]),
+        ]),
+        "NEG".to_owned() => (1, vec![
+          (BaseOp::Move, vec![
+            Token::Number(REG_SC), Token::MacroArg(0)]),
+          (BaseOp::Xor, vec![
+            Token::MacroArg(0), Token::MacroArg(0)]),
+          (BaseOp::Move, vec![
+            Token::MacroArg(0), Token::Number(REG_SC)]),
+        ]),
+        "ADI".to_owned() => (2, vec![
+          (BaseOp::MoveImmediate, vec![
+            Token::Number(REG_SC), Token::MacroArg(1)]),
+          (BaseOp::Add, vec![
+            Token::MacroArg(0), Token::Number(REG_SC)]),
+        ]),
+        "SBI".to_owned() => (2, vec![
+          (BaseOp::MoveImmediate, vec![
+            Token::Number(REG_SC), Token::MacroArg(1)]),
+          (BaseOp::Sub, vec![
+            Token::MacroArg(0), Token::Number(REG_SC)]),
+        ]),
+        "PUSH".to_owned() => (1, vec![
+          (BaseOp::MoveImmediate, vec![
+            Token::Number(REG_SC), Token::Number(1)]),
+          (BaseOp::Add, vec![
+            Token::MacroArg(0), Token::Number(REG_SC)]),
+          (BaseOp::Move, vec![
+            Token::Number(REG_SP), Token::MacroArg(0)]),
+        ]),
+        "POP".to_owned() => (1, vec![
+          (BaseOp::Move, vec![
+            Token::MacroArg(0), Token::Number(REG_SP)]),
+          (BaseOp::MoveImmediate, vec![
+            Token::Number(REG_SC), Token::Number(1)]),
+          (BaseOp::Sub, vec![
+            Token::MacroArg(0), Token::Number(REG_SC)]),
+        ]),
       },
       idx: 0,
     };
 
+    let mut inst_offset = INST_OFFSET_BASE;
     while let Some(tok) = lexer.get_token() {
       match tok {
-        Token::Ident(ident) => {
-          if ident == "EQU" {
-            let lhs = if let Some(tok) = lexer.get_token() {
-              match tok {
-                Token::Ident(id) => id,
-                Token::Label(label) =>
-                  abort!("Unexpected colon in const definition: {}", label),
-                Token::Number(n) =>
-                  abort!("Attempted to define a number: {}", n),
-              }
-            } else {
-              abort!("Unexpected EOF");
-            };
-            let rhs = if let Some(tok) = lexer.get_token() {
-              tok
-            } else {
-              abort!("Unexpected EOF");
-            };
-            this.directives.push(Directive::Const(lhs, rhs));
-          } else if ident == "MACRO" {
-            abort!("Reserved identifier: MACRO");
-          } else {
-            let mut args = Vec::new();
-            for _ in 0..this.size_of_op(&ident) {
-              match lexer.get_token() {
-                // TODO(ubsan): this won't work with arithmetic
-                Some(tok) => args.push(tok),
-                None => abort!("Unexpected EOF"),
-              }
+        Token::Ident(ref ident) if ident == "EQU" => {
+          let lhs = if let Some(tok) = lexer.get_token() {
+            match tok {
+              Token::Ident(id) => id,
+              Token::Label(label) =>
+                abort!("Unexpected colon in const definition: {}", label),
+              Token::Number(n) =>
+                abort!("Attempted to define a number: {}", n),
+              Token::MacroArg(_) =>
+                abort!("Attempted to define a macro argument"),
+              Token::Here =>
+                abort!("Attempted to define `$'"),
             }
-            this.directives.push(Directive::Op(ident, args));
+          } else {
+            abort!("Unexpected EOF");
+          };
+          let rhs = if let Some(tok) = lexer.get_token() {
+            tok
+          } else {
+            abort!("Unexpected EOF");
+          };
+          this.directives.push(Directive::Const(lhs, rhs));
+        }
+        Token::Ident(ref ident) if ident == "MACRO" => {
+          abort!("Reserved identifier: MACRO");
+        }
+        Token::Ident(ident) => {
+          let mut args = Vec::new();
+          for _ in 0..this.size_of_op_str(&ident) {
+            match lexer.get_token() {
+              Some(tok) => args.push(tok),
+              None => abort!("Unexpected EOF"),
+            }
+          }
+          if let Some(&(ref size, ref ops)) = this.macros.get(&ident) {
+            assert!(*size as usize == args.len());
+            for op in ops {
+              let mut inner_args = Vec::new();
+              for tok in &op.1 {
+                if let Token::MacroArg(n) = *tok {
+                  inner_args.push(args[n as usize].clone());
+                } else if let Token::Here = *tok {
+                  inner_args.push(Token::Number(inst_offset));
+                } else {
+                  inner_args.push(tok.clone());
+                }
+              }
+              inst_offset += this.size_of_op(op.0);
+              this.directives.push(Directive::Op(op.0, inner_args));
+            }
+          } else {
+            let op = BaseOp::new(&ident);
+            inst_offset += this.size_of_op(op);
+            this.directives.push(Directive::Op(op, args));
           }
         }
-        Token::Number(n) => abort!("Numbers aren't allowed in op position"),
+        Token::Number(_) => abort!("Numbers aren't allowed in op position"),
         Token::Label(label) => this.directives.push(Directive::Label(label)),
+        Token::Here => abort!("`$' isn't allowed in op position"),
+        Token::MacroArg(_) => abort!("Macro arguments aren't allowed here"),
       }
     }
 
     // normal labels
-    let mut inst_offset = 0x1000;
+    let mut inst_offset = INST_OFFSET_BASE;
     for directive in &this.directives {
       match *directive {
         Directive::Label(ref s) => {
@@ -81,7 +221,7 @@ impl Parser {
             None => {}
           }
         }
-        Directive::Op(ref op, _) => {
+        Directive::Op(op, _) => {
           inst_offset += this.size_of_op(op);
         }
         Directive::Const(..) => {}
@@ -89,6 +229,7 @@ impl Parser {
     }
 
     // equ constants
+    let mut inst_offset = INST_OFFSET_BASE;
     for directive in &this.directives {
       match *directive {
         Directive::Const(ref s, ref tok) => {
@@ -104,8 +245,12 @@ impl Parser {
               }
             }
             Token::Number(n) => n,
+            Token::Here => inst_offset,
             Token::Label(ref label) => {
               abort!("Unexpected label definition: {}", label);
+            }
+            Token::MacroArg(_) => {
+              abort!("Unexpected macro argument in a constant definition");
             }
           };
           match this.labels.insert(s.clone(), rhs) {
@@ -116,7 +261,9 @@ impl Parser {
           }
         }
         Directive::Label(..) => {}
-        Directive::Op(..) => {}
+        Directive::Op(op, _) => {
+          inst_offset += this.size_of_op(op);
+        }
       }
     }
 
@@ -124,7 +271,7 @@ impl Parser {
   }
 
   // TODO(ubsan): macros
-  fn size_of_op(&self, op: &str) -> u16 {
+  fn size_of_op_str(&self, op: &str) -> u16 {
     match op {
       "MI" | "MV" | "MD" | "LD" | "ST" | "AD" | "SB"
       | "ND" | "OR" | "XR" | "SR" | "SL" | "SA" => {
@@ -133,7 +280,23 @@ impl Parser {
       "JG" | "JL" | "JQ" => {
         3
       }
-      s => abort!("Unknown opcode: {}", s),
+      s => {
+        if let Some(&(size, _)) = self.macros.get(s) {
+          size
+        } else {
+          abort!("Unknown opcode: {}", s);
+        }
+      }
+    }
+  }
+
+  fn size_of_op(&self, op: BaseOp) -> u16 {
+    match op {
+      BaseOp::MoveImmediate | BaseOp::Move | BaseOp::MoveDeref | BaseOp::Load
+      | BaseOp::Store | BaseOp::Add | BaseOp::Sub | BaseOp::And | BaseOp::Or
+      | BaseOp::Xor | BaseOp::ShiftRight | BaseOp::ShiftLeft
+      | BaseOp::ShiftArithmetic => 2,
+      BaseOp::JumpGreater | BaseOp::JumpLesser | BaseOp::JumpEqual => 3,
     }
   }
 
@@ -166,6 +329,8 @@ impl Iterator for Parser {
         },
         Token::Label(ref label) =>
           abort!("Unexpected label definition: {}", label),
+        Token::Here => unreachable!(),
+        Token::MacroArg(_) => unreachable!(),
       }
     }
     fn arith(
@@ -199,25 +364,26 @@ impl Iterator for Parser {
     }
     if let Some(directive) = self.next_directive() {
       match directive {
-        Directive::Op(s, toks) => {
-          match &*s {
-            "MI" => arith(self, OpcodeVariant::MoveImmediate, toks),
-            "MV" => arith(self, OpcodeVariant::Move, toks),
-            "MD" => arith(self, OpcodeVariant::MoveDeref, toks),
-            "LD" => arith(self, OpcodeVariant::Load, toks),
-            "ST" => arith(self, OpcodeVariant::Store, toks),
-            "AD" => arith(self, OpcodeVariant::Add, toks),
-            "SB" => arith(self, OpcodeVariant::Sub, toks),
-            "ND" => arith(self, OpcodeVariant::And, toks),
-            "OR" => arith(self, OpcodeVariant::Or, toks),
-            "XR" => arith(self, OpcodeVariant::Xor, toks),
-            "SR" => arith(self, OpcodeVariant::ShiftRight, toks),
-            "SL" => arith(self, OpcodeVariant::ShiftLeft, toks),
-            "SA" => arith(self, OpcodeVariant::ShiftArithmetic, toks),
-            "JG" => jump(self, OpcodeVariant::JumpGreater, toks),
-            "JL" => jump(self, OpcodeVariant::JumpLesser, toks),
-            "JQ" => jump(self, OpcodeVariant::JumpEqual, toks),
-            _ => unreachable!(),
+        Directive::Op(op, toks) => {
+          match op {
+            BaseOp::MoveImmediate =>
+              arith(self, OpcodeVariant::MoveImmediate, toks),
+            BaseOp::Move => arith(self, OpcodeVariant::Move, toks),
+            BaseOp::MoveDeref => arith(self, OpcodeVariant::MoveDeref, toks),
+            BaseOp::Load => arith(self, OpcodeVariant::Load, toks),
+            BaseOp::Store => arith(self, OpcodeVariant::Store, toks),
+            BaseOp::Add => arith(self, OpcodeVariant::Add, toks),
+            BaseOp::Sub => arith(self, OpcodeVariant::Sub, toks),
+            BaseOp::And => arith(self, OpcodeVariant::And, toks),
+            BaseOp::Or => arith(self, OpcodeVariant::Or, toks),
+            BaseOp::Xor => arith(self, OpcodeVariant::Xor, toks),
+            BaseOp::ShiftRight => arith(self, OpcodeVariant::ShiftRight, toks),
+            BaseOp::ShiftLeft => arith(self, OpcodeVariant::ShiftLeft, toks),
+            BaseOp::ShiftArithmetic =>
+              arith(self, OpcodeVariant::ShiftArithmetic, toks),
+            BaseOp::JumpGreater => jump(self, OpcodeVariant::JumpGreater, toks),
+            BaseOp::JumpLesser => jump(self, OpcodeVariant::JumpLesser, toks),
+            BaseOp::JumpEqual => jump(self, OpcodeVariant::JumpEqual, toks),
           }
         }
         Directive::Label(..) | Directive::Const(..) => {
@@ -236,10 +402,14 @@ impl Iterator for Parser {
   }
 }
 
+#[derive(Clone)]
 enum Token {
   Label(String),
   Ident(String),
+  #[allow(dead_code)]
+  MacroArg(u16),
   Number(u16),
+  Here, // $
 }
 
 struct Lexer {
