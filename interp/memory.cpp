@@ -33,16 +33,17 @@ void display::redraw() {
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
     SDL_RenderClear(renderer);
 
+    uint8_t base_x, base_y;
     // Render
     for (size_t y = 0; y < DISPLAY_DIMENSIONS; ++y) {
         for (size_t x = 0; x < DISPLAY_DIMENSIONS; ++x) {
             uint8_t r,g,b,a;
             size_t offset = (y * DISPLAY_DIMENSIONS) + x;
             mem_t pixel = screen[offset];
-            a = ((pixel & 0xF000) >> 12) * 4;
-            b = ((pixel & 0x0F00) >> 8 ) * 4;
-            g = ((pixel & 0x00F0) >> 4 ) * 4;
-            r = ((pixel & 0x000F) >> 0 ) * 4;
+            a = ((pixel & 0xF000) >> 12) * 16;
+            b = ((pixel & 0x0F00) >> 8 ) * 16;
+            g = ((pixel & 0x00F0) >> 4 ) * 16;
+            r = ((pixel & 0x000F) >> 0 ) * 16;
 
             SDL_SetRenderDrawColor(renderer, r, g, b, a);
             SDL_RenderDrawPoint(renderer, x, y);
