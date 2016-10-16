@@ -19,17 +19,6 @@ void display::redraw() {
         is_init = true;
     }
 
-    // eat SDL events
-    SDL_Event event;
-    while (SDL_PollEvent(&event)) {
-        switch (event.type) {
-            case SDL_QUIT:
-                exit(0); // we could cleanup but w/e
-                break;
-            default:
-                break;
-        }
-    }
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
     SDL_RenderClear(renderer);
 
@@ -52,3 +41,17 @@ void display::redraw() {
 
     SDL_RenderPresent(renderer);
 };
+
+void display::eat_inputs() {
+    // eat SDL events
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+        switch (event.type) {
+            case SDL_QUIT:
+                exit(0); // we could cleanup but w/e
+                break;
+            default:
+                break;
+        }
+    }
+}

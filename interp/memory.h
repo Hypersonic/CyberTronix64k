@@ -19,6 +19,7 @@ class display {
 public:
     display() : screen{0}, is_init(false) {};
     void redraw();
+    void eat_inputs();
     mem_t disp_coords;
     mem_t screen[DISPLAY_SIZE];
     std::atomic<bool> is_init;
@@ -58,6 +59,7 @@ public:
     }
 
     void flush_changes() {
+        disp.eat_inputs();
         if (must_update_display && !redraw_supressed) {
             disp.redraw();
             must_update_display = false;
