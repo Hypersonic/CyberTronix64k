@@ -69,7 +69,7 @@ impl Parser {
     }
 
     // normal labels
-    let mut inst_offset = 0;
+    let mut inst_offset = 0x1000;
     for directive in &this.directives {
       match *directive {
         Directive::Label(ref s) => {
