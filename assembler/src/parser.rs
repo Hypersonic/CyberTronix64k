@@ -302,6 +302,13 @@ impl Lexer {
       }
     }
     match self.get_char() {
+      Some(ch) if ch == b'#' || ch == b';' => {
+        while let Some(c) = self.peek_char() {
+          if c != b'\n' { self.get_char(); }
+          else { break; }
+        }
+        self.get_token()
+      }
       Some(ch) if is_space(ch) || ch == b',' => {
         while let Some(c) = self.peek_char() {
           if is_space(c) { self.get_char(); }

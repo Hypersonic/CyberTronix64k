@@ -1,4 +1,6 @@
 equ ip_ ip
+# comment1
+; comment2
 
 label1:
 mv sc, sc
