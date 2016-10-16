@@ -37,8 +37,14 @@ public:
         }
         if (DISPLAY_REGION_START <= idx && idx < DISPLAY_REGION_END) {
             must_update_display = true;
-            // TODO use disp_coords
-            return disp.screen[idx - DISPLAY_REGION_SIZE];
+            uint8_t disp_x, disp_y, x, y;
+            disp_x = disp.disp_coords & 0x00FF;
+            disp_y = (disp.disp_coords & 0xFF00) >> 8;
+            uint16_t offset = idx - DISPLAY_REGION_SIZE;
+            x = offset % DISPLAY_REGION_DIMENSIONS;
+            y = (offset - x) / DISPLAY_REGION_DIMENSIONS;
+            offset = ((disp_y + y) * DISPLAY_DIMENSIONS) + (disp_x + x);
+            return disp.screen[offset];
         }
         if (idx == PRINT_LOC) {
             must_print = true;
