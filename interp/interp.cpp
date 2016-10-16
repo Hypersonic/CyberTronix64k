@@ -69,7 +69,7 @@ void interp_instr() {
             main_memory[INST_PTR_LOC] = next_ip;
             rm = ARITH_RM(ip);
             imm = ARITH_IMM(ip);
-            P_TRACE("MI 0x%04x, 0x%04x", rm, mem);
+            P_TRACE("MI 0x%04x, 0x%04x", rm, imm);
             main_memory[rm] = imm; 
             break;
         case MV:
@@ -178,7 +178,7 @@ void interp_instr() {
             imm = LOGIC_IMM(ip);
             P_TRACE("JG 0x%04x, 0x%04x, 0x%04x", rm, mem, imm);
             if (main_memory[rm] > main_memory[mem]) {
-                next_ip = ip + imm;
+                next_ip = imm;
                 main_memory[INST_PTR_LOC] = next_ip;
             }
             break;
@@ -190,7 +190,7 @@ void interp_instr() {
             imm = LOGIC_IMM(ip);
             P_TRACE("JG 0x%04x, 0x%04x, 0x%04x", rm, mem, imm);
             if (main_memory[rm] < main_memory[mem]) {
-                next_ip = ip + imm;
+                next_ip = imm;
                 main_memory[INST_PTR_LOC] = next_ip;
             }
             break;
@@ -201,12 +201,12 @@ void interp_instr() {
             mem = LOGIC_MEM(ip);
             imm = LOGIC_IMM(ip);
             P_TRACE("JG 0x%04x, 0x%04x, 0x%04x", rm, mem, imm);
-            if (rm == 0 && mem == 0 && imm == 0xFFFD) { // Actually an HF instruction
+            if (rm == 0 && mem == 0 && imm == ip) { // Actually an HF instruction
                 P_TRACE("%s", "(actually HF)"); // the P_TRACE macro needs an VARARG, so do it this way :/
                 // TODO: switch to HACF CPU mode
                 abort();
             } else if (main_memory[rm] == main_memory[mem]) {
-                next_ip = ip + imm;
+                next_ip = imm;
                 main_memory[INST_PTR_LOC] = next_ip;
             }
             break;
