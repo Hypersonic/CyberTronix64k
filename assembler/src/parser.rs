@@ -82,11 +82,11 @@ impl Parser {
           (BaseOp::JumpEqual, vec![
             Token::Number(REG_IP), Token::Number(REG_IP), Token::Here]),
         ]),
-        "JP".to_owned() => (1, vec![
+        "JM".to_owned() => (1, vec![
           (BaseOp::Move, vec![
             Token::Number(REG_IP), Token::MacroArg(0)]),
         ]),
-        "JPI".to_owned() => (1, vec![
+        "JI".to_owned() => (1, vec![
           (BaseOp::MoveImmediate, vec![
             Token::Number(REG_IP), Token::MacroArg(0)]),
         ]),
