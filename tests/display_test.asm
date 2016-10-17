@@ -14,7 +14,7 @@ start:
     MI 0x0, start
 
 redraw:
-    ; Flip drawing off, then on
+    ; Flip drawing on, then back off
     MI 0xFE, 0x0
     MI 0xFE, 0x1
     MI PIXELS_WRITTEN, 0x00
