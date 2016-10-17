@@ -59,8 +59,8 @@ public:
     }
 
     void flush_changes() {
-        disp.eat_inputs();
         if (must_update_display && !redraw_supressed) {
+            disp.eat_inputs();
             disp.redraw();
             must_update_display = false;
         }
