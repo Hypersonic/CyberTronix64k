@@ -1,4 +1,4 @@
-MI 0x0 start
+JI start
 
 equ PIXELS_WRITTEN, 0x201
 equ ROWS_WRITTEN, 0x202
@@ -16,7 +16,7 @@ loop:
     AD PIXELS_WRITTEN, SC
     MI SC, 0x1FF
     JQ PIXELS_WRITTEN, SC, redraw
-    MI 0x0, loop
+    JI loop
 
 redraw:
     MI PIXELS_WRITTEN, 0x00
@@ -24,7 +24,7 @@ redraw:
     ADI 0xFF, 0x01
     MI SC, 0x7f ; end of screen
     JQ ROWS_WRITTEN, SC, end
-    MI 0x0, start
+    JI start
 
 ; inf loop at end
 end:
@@ -36,4 +36,4 @@ end:
     ADI ITERATIONS, 0x1
     MV COLOR, ITERATIONS
     MI 0xFF, 0x0
-    MI 0x0, start
+    JI start
