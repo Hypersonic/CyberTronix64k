@@ -33,6 +33,7 @@ pub enum OpcodeVariant {
   JumpGreater(u16),
   JumpLesser(u16),
   JumpEqual(u16),
+  Data(Vec<u16>), // does not use reg or num
 }
 
 impl Debug for Opcode {
@@ -52,12 +53,19 @@ impl Debug for Opcode {
       ShiftRight => write!(f, "SR {}, {}", self.reg, self.num),
       ShiftLeft => write!(f, "SL {}, {}", self.reg, self.num),
       ShiftArithmetic => write!(f, "SA {}, {}", self.reg, self.num),
-      JumpGreater(ref label) =>
+      JumpGreater(label) =>
         write!(f, "JG {}, {}, {}", self.reg, self.num, label),
-      JumpLesser(ref label) =>
+      JumpLesser(label) =>
         write!(f, "JL {}, {}, {}", self.reg, self.num, label),
-      JumpEqual(ref label) =>
+      JumpEqual(label) =>
         write!(f, "JQ {}, {}, {}", self.reg, self.num, label),
+      Data(ref nums) => {
+        try!(write!(f, "DATA "));
+        for el in nums {
+          try!(write!(f, "{} ", el));
+        }
+        write!(f, "ENDDATA")
+      }
     }
   }
 }
@@ -123,16 +131,6 @@ fn main() {
       );
     }
   };
-  let mut out = match File::create(outfilename) {
-    Ok(file) => file,
-    Err(e) => {
-      abort!(
-        "Failed to open output file: `{}'\nError: {}",
-        outfilename.to_string_lossy(),
-        e,
-      );
-    }
-  };
 
   let mut bytes = Vec::new();
   match inp.read_to_end(&mut bytes) {
@@ -147,10 +145,11 @@ fn main() {
   }
 
   let program = Program::new(bytes);
+  let mut out = Vec::new();
   for op in program.0 {
     use OpcodeVariant::*;
 
-    fn write(out: &mut File, to_write: &[u16]) {
+    fn write(out: &mut Vec<u8>, to_write: &[u16]) {
       let res = out.write_all(
         unsafe {
           std::slice::from_raw_parts(
@@ -166,10 +165,10 @@ fn main() {
         }
       }
     };
-    fn arith(out: &mut File, opcode: u16, reg: u16, mem: u16) {
+    fn arith(out: &mut Vec<u8>, opcode: u16, reg: u16, mem: u16) {
       write(out, &[(opcode << 12) | reg, mem]);
     };
-    fn jump(out: &mut File, opcode: u16, reg: u16, mem: u16, label: u16) {
+    fn jump(out: &mut Vec<u8>, opcode: u16, reg: u16, mem: u16, label: u16) {
       write(out, &[(opcode << 12) | reg, mem, label]);
     };
 
@@ -190,6 +189,20 @@ fn main() {
       JumpGreater(label) => jump(&mut out, 0xD, op.reg, op.num, label),
       JumpLesser(label) => jump(&mut out, 0xE, op.reg, op.num, label),
       JumpEqual(label) => jump(&mut out, 0xF, op.reg, op.num, label),
+      Data(nums) => write(&mut out, &nums),
     }
   }
+  match File::create(outfilename) {
+    Ok(mut file) => match file.write_all(&out) {
+      Ok(_) => {}
+      Err(e) => abort!("Error while writing: {}", e),
+    },
+    Err(e) => {
+      abort!(
+        "Failed to open output file: `{}'\nError: {}",
+        outfilename.to_string_lossy(),
+        e,
+      );
+    }
+  };
 }

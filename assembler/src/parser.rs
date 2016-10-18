@@ -55,6 +55,7 @@ impl BaseOp {
 
 enum Directive {
   Op(BaseOp, Vec<Token>),
+  Data(Vec<Token>),
   Label(String),
   Const(String, Token),
 }
@@ -168,6 +169,23 @@ impl Parser {
           };
           this.directives.push(Directive::Const(lhs, rhs));
         }
+        Token::Ident(ref ident) if ident == "DATA" => {
+          let mut data = Vec::new();
+          loop {
+            match lexer.get_token() {
+              Some(Token::Ident(ref s)) if s == "ENDDATA" => break,
+              Some(tok @ Token::Ident(_)) | Some(tok @ Token::Number(_))
+              | Some(tok @ Token::Here) => data.push(tok),
+
+              Some(Token::Label(ref label)) => {
+                abort!("Unexpected label definition: {}", label)
+              }
+              Some(Token::MacroArg(_)) => abort!("Unexpected macro argument"),
+              None => abort!("Unexpected EOF (expected ENDDATA)"),
+            }
+          }
+          this.directives.push(Directive::Data(data));
+        }
         Token::Ident(ref ident) if ident == "MACRO" => {
           abort!("Reserved identifier: MACRO");
         }
@@ -225,6 +243,9 @@ impl Parser {
           inst_offset += this.size_of_op(op);
         }
         Directive::Const(..) => {}
+        Directive::Data(ref data) => {
+          inst_offset += data.len() as u16;
+        }
       }
     }
 
@@ -264,13 +285,15 @@ impl Parser {
         Directive::Op(op, _) => {
           inst_offset += this.size_of_op(op);
         }
+        Directive::Data(ref data) => {
+          inst_offset += data.len() as u16;
+        }
       }
     }
 
     this
   }
 
-  // TODO(ubsan): macros
   fn size_of_op_str(&self, op: &str) -> u16 {
     match op {
       "MI" | "MV" | "MD" | "LD" | "ST" | "AD" | "SB"
@@ -323,12 +346,10 @@ impl Iterator for Parser {
         Token::Ident(ref id) => match this.labels.get(id) {
           Some(&n) => n,
           None => {
-            println!("labels: {:?}", this.labels);
             abort!("Use of an undefined label: {}", id);
           }
         },
-        Token::Label(ref label) =>
-          abort!("Unexpected label definition: {}", label),
+        Token::Label(_) => unreachable!(),
         Token::Here => unreachable!(),
         Token::MacroArg(_) => unreachable!(),
       }
@@ -362,6 +383,29 @@ impl Iterator for Parser {
         num: num,
       })
     }
+    fn data(this: &Parser, data: Vec<Token>) -> Option<Opcode> {
+      let mut data_num = Vec::new();
+      // heh. datum.
+      for datum in data {
+        data_num.push(match datum {
+          Token::Number(n) => n,
+          Token::Ident(ref id) => match this.labels.get(id) {
+            Some(&n) => n,
+            None => {
+              abort!("Use of an undefined label: {}", id);
+            }
+          },
+          Token::Label(_) => unreachable!(),
+          Token::Here => unreachable!(),
+          Token::MacroArg(_) => unreachable!(),
+        });
+      }
+      Some(Opcode {
+        variant: OpcodeVariant::Data(data_num),
+        reg: 0,
+        num: 0,
+      })
+    }
     if let Some(directive) = self.next_directive() {
       match directive {
         Directive::Op(op, toks) => {
@@ -386,6 +430,7 @@ impl Iterator for Parser {
             BaseOp::JumpEqual => jump(self, OpcodeVariant::JumpEqual, toks),
           }
         }
+        Directive::Data(nums) => data(self, nums),
         Directive::Label(..) | Directive::Const(..) => {
           while let Some(dir) = self.directives.get(self.idx) {
             match *dir {
