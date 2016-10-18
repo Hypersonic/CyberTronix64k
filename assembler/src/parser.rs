@@ -174,9 +174,14 @@ impl Parser {
           loop {
             match lexer.get_token() {
               Some(Token::Ident(ref s)) if s == "ENDDATA" => break,
-              Some(tok @ Token::Ident(_)) | Some(tok @ Token::Number(_))
-              | Some(tok @ Token::Here) => data.push(tok),
-
+              Some(tok @ Token::Ident(_)) | Some(tok @ Token::Number(_)) => {
+                inst_offset += 1;
+                data.push(tok)
+              }
+              Some(Token::Here) => {
+                inst_offset += 1;
+                data.push(Token::Number(inst_offset - 1));
+              }
               Some(Token::Label(ref label)) => {
                 abort!("Unexpected label definition: {}", label)
               }
@@ -611,6 +616,7 @@ impl Lexer {
         }
         Some(Token::Number(acc))
       }
+      Some(b'$') => Some(Token::Here),
       Some(ch) => {
         abort!("Unsupported character: `{}' ({})", ch as char, ch);
       }
