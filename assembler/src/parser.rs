@@ -150,6 +150,8 @@ impl Parser {
           let lhs = if let Some(tok) = lexer.get_token() {
             match tok {
               Token::Ident(id) => id,
+              Token::StringData(_) =>
+                abort!("Attempted to define a string"),
               Token::Label(label) =>
                 abort!("Unexpected colon in const definition: {}", label),
               Token::Number(n) =>
@@ -181,6 +183,10 @@ impl Parser {
               Some(Token::Here) => {
                 inst_offset += 1;
                 data.push(Token::Number(inst_offset - 1));
+              }
+              Some(Token::StringData(s)) => {
+                inst_offset += s.len() as u16;
+                data.push(Token::StringData(s));
               }
               Some(Token::Label(ref label)) => {
                 abort!("Unexpected label definition: {}", label)
@@ -228,6 +234,8 @@ impl Parser {
         Token::Label(label) => this.directives.push(Directive::Label(label)),
         Token::Here => abort!("`$' isn't allowed in op position"),
         Token::MacroArg(_) => abort!("Macro arguments aren't allowed here"),
+        Token::StringData(_) =>
+          abort!("Strings aren't allowed outside of DATA directives"),
       }
     }
 
@@ -272,12 +280,12 @@ impl Parser {
             }
             Token::Number(n) => n,
             Token::Here => inst_offset,
-            Token::Label(ref label) => {
-              abort!("Unexpected label definition: {}", label);
-            }
-            Token::MacroArg(_) => {
-              abort!("Unexpected macro argument in a constant definition");
-            }
+            Token::StringData(_)
+              => abort!("Attempted to define a constant to a string"),
+            Token::Label(ref label)
+              => abort!("Unexpected label definition: {}", label),
+            Token::MacroArg(_)
+              => abort!("Unexpected macro argument in a constant definition"),
           };
           match this.labels.insert(s.clone(), rhs) {
             Some(s) => {
@@ -354,6 +362,7 @@ impl Iterator for Parser {
             abort!("Use of an undefined label: {}", id);
           }
         },
+        Token::StringData(_) => unreachable!(),
         Token::Label(_) => unreachable!(),
         Token::Here => unreachable!(),
         Token::MacroArg(_) => unreachable!(),
@@ -392,18 +401,19 @@ impl Iterator for Parser {
       let mut data_num = Vec::new();
       // heh. datum.
       for datum in data {
-        data_num.push(match datum {
-          Token::Number(n) => n,
+        match datum {
+          Token::Number(n) => data_num.push(n),
           Token::Ident(ref id) => match this.labels.get(id) {
-            Some(&n) => n,
+            Some(&n) => data_num.push(n),
             None => {
               abort!("Use of an undefined label: {}", id);
             }
           },
+          Token::StringData(mut s) => data_num.append(&mut s),
           Token::Label(_) => unreachable!(),
           Token::Here => unreachable!(),
           Token::MacroArg(_) => unreachable!(),
-        });
+        };
       }
       Some(Opcode {
         variant: OpcodeVariant::Data(data_num),
@@ -456,9 +466,9 @@ impl Iterator for Parser {
 enum Token {
   Label(String),
   Ident(String),
-  #[allow(dead_code)]
   MacroArg(u16),
   Number(u16),
+  StringData(Vec<u16>),
   Here, // $
 }
 
@@ -535,6 +545,38 @@ impl Lexer {
           else { break; }
         }
         self.get_token()
+      }
+      Some(ch) if ch == b'"' || ch == b'\'' => {
+        let mut data = Vec::new();
+        loop {
+          match self.get_char() {
+            Some(c) if c == ch => break,
+            Some(b'\\') => {
+              match self.get_char() {
+                Some(b'a') => data.push(0x07),  // alarm
+                Some(b'b') => data.push(0x08),  // backspace
+                Some(b'f') => data.push(0x0C),  // Formfeed
+                Some(b'n') => data.push(0x0A),  // Line Feed
+                Some(b'r') => data.push(0x0D),  // Carriage Return
+                Some(b't') => data.push(0x09),  // Horizontal Tab
+                Some(b'v') => data.push(0x0B),  // Vertical Tab
+                Some(b'\\') => data.push(0x5C), // Backslash
+                Some(b'\'') => data.push(0x27), // Single quotation mark
+                Some(b'\"') => data.push(0x22), // Double quotation mark
+                Some(b'?') => data.push(0x3F),  // Question mark
+                Some(b'\n') => {}
+                Some(c) =>
+                  abort!("Unknown character after \\: `{}' ({})", c as char, c),
+                None => abort!("Unexpected EOF"),
+              }
+            }
+            Some(c) => {
+              data.push(c as u16)
+            }
+            None => abort!("Unexpected EOF"),
+          }
+        }
+        Some(Token::StringData(data))
       }
       Some(ch) if is_ident_start(ch) => {
         let mut ret = Vec::new();
