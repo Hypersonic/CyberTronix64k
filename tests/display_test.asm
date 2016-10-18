@@ -33,7 +33,7 @@ end:
     MI 0xFE, 0x1
     MI PIXELS_WRITTEN, 0x0
     MI ROWS_WRITTEN, 0x0
-    ADI ITERATIONS, 0x1
+    ADI ITERATIONS, 0x6
     MV COLOR, ITERATIONS
     MI 0xFF, 0x0
     JI start
