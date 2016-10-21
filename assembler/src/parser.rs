@@ -305,7 +305,13 @@ impl Parser {
           inst_offset += this.size_of_op(op);
         }
         Directive::Data(ref data) => {
-          inst_offset += data.len() as u16;
+          for el in data {
+            if let Token::StringData(ref s) = *el {
+              inst_offset += s.len() as u16;
+            } else {
+              inst_offset += 1;
+            }
+          }
         }
       }
     }
