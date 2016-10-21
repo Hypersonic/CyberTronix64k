@@ -100,7 +100,7 @@ impl Parser {
         "DEC".to_owned() => (1, vec![
           (BaseOp::MoveImmediate, vec![
             Token::Number(REG_SC), Token::Number(1)]),
-          (BaseOp::Add, vec![
+          (BaseOp::Sub, vec![
             Token::MacroArg(0), Token::Number(REG_SC)]),
         ]),
         "NEG".to_owned() => (1, vec![
