@@ -127,17 +127,17 @@ impl Parser {
           (BaseOp::MoveImmediate, vec![
             Token::Number(REG_SC), Token::Number(1)]),
           (BaseOp::Add, vec![
-            Token::MacroArg(0), Token::Number(REG_SC)]),
-          (BaseOp::Move, vec![
+            Token::Number(REG_SP), Token::Number(REG_SC)]),
+          (BaseOp::Load, vec![
             Token::Number(REG_SP), Token::MacroArg(0)]),
         ]),
         "POP".to_owned() => (1, vec![
-          (BaseOp::Move, vec![
+          (BaseOp::MoveDeref, vec![
             Token::MacroArg(0), Token::Number(REG_SP)]),
           (BaseOp::MoveImmediate, vec![
             Token::Number(REG_SC), Token::Number(1)]),
           (BaseOp::Sub, vec![
-            Token::MacroArg(0), Token::Number(REG_SC)]),
+            Token::Number(REG_SP), Token::Number(REG_SC)]),
         ]),
       },
       idx: 0,
