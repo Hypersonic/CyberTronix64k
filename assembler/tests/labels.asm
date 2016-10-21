@@ -1,3 +1,3 @@
-data 0x1010 0x3922 $ enddata
+data "Hello" $ enddata
 label:
 ji label
