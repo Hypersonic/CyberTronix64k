@@ -9,12 +9,6 @@ equ SC2, 0x4
 equ CURR_CMD, 0xF0 ; ptr to currently executing cmd
 equ DATA_POINTER, 0xF1 ; ptr to current data
 
-; --- BF Program to run ---
-PROGRAM:
-data
-"++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>.", 0x0
-enddata
-
 start:
     MI CURR_CMD, PROGRAM ; set our current command to PROGRAM
     MI DATA_POINTER, DATA_REGION ; Data pointer to beginning of data region
@@ -69,7 +63,6 @@ inc_val:
     ; MI OUT, 0x2d
     ST SC2, DATA_POINTER
     JI interp
-
 dec_val:
     MD SC2, DATA_POINTER
     DEC SC2
@@ -87,12 +80,10 @@ get_val:
 beg_loop:
     MD SC2, DATA_POINTER
     MI SC, 0x0
-    ;MI OUT, 0x55
     JQ SC2, SC, beg_loop__no_enter_loop
     JI beg_loop__enter_loop
 beg_loop__no_enter_loop: ; we don't need to start looping -- data is 0
     ; eat until ']'
-    MD OUT, CURR_CMD
     MD SC2, CURR_CMD
     MI SC, 0x5d ; ']'
     JQ SC, SC2, beg_loop__after
@@ -127,6 +118,12 @@ exit:
     MI OUT, 0x0a
     HF
 
+
+; --- BF Program to run ---
+PROGRAM:
+data
+"++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>.", 0x0
+enddata
 
 ; currently 256 words -- rep macro would be useful to make this cleaner
 DATA_REGION:
