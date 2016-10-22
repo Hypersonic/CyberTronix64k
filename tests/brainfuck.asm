@@ -56,9 +56,11 @@ interp:
 inc_ptr:
     INC DATA_POINTER
     JI interp
+
 dec_ptr:
     DEC DATA_POINTER
     JI interp
+
 inc_val:
     MD SC2, DATA_POINTER
     INC SC2
@@ -67,17 +69,21 @@ inc_val:
     ; MI OUT, 0x2d
     ST SC2, DATA_POINTER
     JI interp
+
 dec_val:
     MD SC2, DATA_POINTER
     DEC SC2
     ST SC2, DATA_POINTER
     JI interp
+
 put_val:
     MD OUT, DATA_POINTER
     JI interp
+
 get_val:
     LD DATA_POINTER, IN
     JI interp
+    
 beg_loop:
     MD SC2, DATA_POINTER
     MI SC, 0x0
@@ -98,6 +104,7 @@ beg_loop__enter_loop:
     ; Push cmd ptr and enter loop
     PUSH CURR_CMD
     JI interp
+
 end_loop:
     ; if *DP != 0, POP CURR_CMD, else POP SC
     MD SC2, DATA_POINTER
@@ -111,6 +118,7 @@ end_loop__do_loop:
 end_loop__no_loop:
     POP SC
     JI interp
+
 exit:
     MI OUT, 0x42
     MI OUT, 0x79
