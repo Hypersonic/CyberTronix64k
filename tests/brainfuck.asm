@@ -1,8 +1,8 @@
 JI start
 
 ; --- System constants ---
-equ OUT 0x5
-equ IN  0x6
+equ OUT 0x200
+equ IN  0x201
 equ SC2 0x4
 
 ; --- BF Constants ---
