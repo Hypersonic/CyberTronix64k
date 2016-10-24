@@ -1,3 +1,2 @@
-data "Hello" $
-label:
-ji label
+MI 0x40, 0x100
+MI 0x41, 0x12

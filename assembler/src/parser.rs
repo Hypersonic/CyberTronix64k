@@ -413,6 +413,24 @@ impl Iterator for Parser {
           jump(this, OpcodeVariant::JumpEqual, args, &mac_args),
       }
     }
+
+    let op = match self.op_buffer.get_mut(self.op_buffer_idx) {
+      Some(op) => Some(
+        ::std::mem::replace(op, Opcode {
+          variant: OpcodeVariant::MoveImmediate,
+          reg: 0,
+          num: 0,
+        })
+      ),
+      None => None,
+    };
+    if let Some(op) = op {
+      self.op_buffer_idx += 1;
+      return Some(op);
+    } else {
+      self.op_buffer_idx = 0;
+      self.op_buffer.clear();
+    }
     if let Some(dir) = self.next_directive() {
       match dir.variant {
         DirectiveVar::Op(op, mac_args) => {
