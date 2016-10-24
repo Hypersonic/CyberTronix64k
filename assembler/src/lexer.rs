@@ -253,7 +253,19 @@ impl Lexer {
             match self.get_char() {
               Some(b'\'') => buff.push(b'\''),
               Some(b'"') => buff.push(b'"'),
-              Some(b'\n') => {},
+              Some(b'\n') => {
+                loop {
+                  if let Some(c) = self.peek_char() {
+                    if is_space(c) {
+                      self.get_char();
+                    } else {
+                      break;
+                    }
+                  } else {
+                    abort!("Unexpected EOF")
+                  }
+                }
+              },
               Some(b'n') => buff.push(b'\n'),
               Some(ch) => abort!("Unrecogized escape sequence: \\{}", ch),
               None => abort!("Unexpected EOF"),
