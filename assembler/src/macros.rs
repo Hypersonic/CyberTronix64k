@@ -23,13 +23,15 @@ macro_rules! error {
 macro_rules! error_nln {
   ($fmt:expr) => ({
     <::std::io::Stderr as ::std::io::Write>::write_fmt(
-      &mut ::std::io::stderr(), format_args!(concat!($fmt, "\n"))
+      &mut ::std::io::stderr(), format_args!(concat!("error: ", $fmt, "\n"))
     ).expect("Writing to stderr failed");
     ::std::process::exit(1);
   });
   ($fmt:expr, $($arg:tt)*) => ({
     <::std::io::Stderr as ::std::io::Write>::write_fmt(
-      &mut ::std::io::stderr(), format_args!(concat!($fmt, "\n"), $($arg)*)
+      &mut ::std::io::stderr(), format_args!(
+        concat!("error: ", $fmt, "\n"), $($arg)*
+      )
     ).expect("Writing to stderr failed");
     ::std::process::exit(1);
   });

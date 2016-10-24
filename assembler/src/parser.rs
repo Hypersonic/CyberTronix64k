@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use {Opcode, OpcodeVariant};
 
-use lexer::{Directive, DirectiveVar, Lexer, OpArg, OpArgVar};
+use lexer::{self, Directive, DirectiveVar, Lexer, OpArg, OpArgVar};
 
 const INST_OFFSET_BASE: u16 = 0x1000;
 
@@ -9,6 +9,7 @@ const REG_IP: u16 = 0x0;
 const REG_SP: u16 = 0x1;
 const REG_BP: u16 = 0x2;
 const REG_SC: u16 = 0x3;
+const REG_SC2: u16 = 0x4;
 
 #[derive(Copy, Clone)]
 enum BaseOp {
@@ -36,12 +37,28 @@ pub struct Parser {
   inst_offset: u16,
   directives: Vec<Directive>,
   labels: HashMap<String, u16>,
-  macros: HashMap<String, (u16, Vec<(BaseOp, Vec<OpArgVar>)>)>,
+  macros: HashMap<String, (u16, Vec<(BaseOp, Vec<OpArg>)>)>,
   idx: usize,
 }
 
 impl Parser {
   pub fn new(input: Vec<u8>) -> Self {
+    macro_rules! macro_op_arg {
+      ($var:ident) => (
+        OpArg {
+          variant: OpArgVar::$var,
+          line: 0,
+          offset: 0,
+        }
+      );
+      ($var:ident ($($arg:tt)*)) => (
+        OpArg {
+          variant: OpArgVar::$var($($arg)*),
+          line: 0,
+          offset: 0,
+        }
+      );
+    }
     let mut lexer = Lexer::new(input);
     let mut this = Parser {
       op_buffer: Vec::new(),
@@ -57,128 +74,194 @@ impl Parser {
       macros: hashmap! {
         "MI".to_owned() => (2, vec![
           (BaseOp::MoveImmediate, vec![
-            OpArgVar::MacroArg(0), OpArgVar::MacroArg(1),
+            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(1)),
           ])
         ]),
         "MV".to_owned() => (2, vec![
-          (BaseOp::Move, vec![OpArgVar::MacroArg(0), OpArgVar::MacroArg(1)])
+          (BaseOp::Move, vec![
+            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(1))
+          ])
         ]),
         "MD".to_owned() => (2, vec![
           (BaseOp::MoveDeref, vec![
-            OpArgVar::MacroArg(0), OpArgVar::MacroArg(1),
+            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(1)),
           ])
         ]),
         "LD".to_owned() => (2, vec![
-          (BaseOp::Load, vec![OpArgVar::MacroArg(0), OpArgVar::MacroArg(1)])
+          (BaseOp::Load, vec![
+            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(1))
+          ])
         ]),
         "ST".to_owned() => (2, vec![
-          (BaseOp::Store, vec![OpArgVar::MacroArg(0), OpArgVar::MacroArg(1)])
+          (BaseOp::Store, vec![
+            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(1)),
+          ])
         ]),
         "AD".to_owned() => (2, vec![
-          (BaseOp::Add, vec![OpArgVar::MacroArg(0), OpArgVar::MacroArg(1)])
+          (BaseOp::Add, vec![
+            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(1)),
+          ])
         ]),
         "SB".to_owned() => (2, vec![
-          (BaseOp::Sub, vec![OpArgVar::MacroArg(0), OpArgVar::MacroArg(1)])
+          (BaseOp::Sub, vec![
+            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(1)),
+          ])
         ]),
         "ND".to_owned() => (2, vec![
-          (BaseOp::And, vec![OpArgVar::MacroArg(0), OpArgVar::MacroArg(1)])
+          (BaseOp::And, vec![
+            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(1)),
+          ])
         ]),
         "OR".to_owned() => (2, vec![
-          (BaseOp::Or, vec![OpArgVar::MacroArg(0), OpArgVar::MacroArg(1)])
+          (BaseOp::Or, vec![
+            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(1)),
+          ])
         ]),
         "XR".to_owned() => (2, vec![
-          (BaseOp::Xor, vec![OpArgVar::MacroArg(0), OpArgVar::MacroArg(1)])
+          (BaseOp::Xor, vec![
+            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(1)),
+          ])
         ]),
         "SR".to_owned() => (2, vec![
           (BaseOp::ShiftRight, vec![
-            OpArgVar::MacroArg(0), OpArgVar::MacroArg(1),
+            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(1)),
           ])
         ]),
         "SL".to_owned() => (2, vec![
           (BaseOp::ShiftLeft, vec![
-            OpArgVar::MacroArg(0), OpArgVar::MacroArg(1),
+            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(1)),
           ])
         ]),
         "SA".to_owned() => (2, vec![
           (BaseOp::ShiftArithmetic, vec![
-            OpArgVar::MacroArg(0), OpArgVar::MacroArg(1),
+            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(1)),
           ])
         ]),
         "JG".to_owned() => (3, vec![
           (BaseOp::JumpGreater, vec![
-            OpArgVar::MacroArg(0), OpArgVar::MacroArg(1), OpArgVar::MacroArg(2),
+            macro_op_arg!(MacroArg(0)),
+            macro_op_arg!(MacroArg(1)),
+            macro_op_arg!(MacroArg(2)),
           ])
         ]),
         "JL".to_owned() => (3, vec![
           (BaseOp::JumpLesser, vec![
-            OpArgVar::MacroArg(0), OpArgVar::MacroArg(1), OpArgVar::MacroArg(2),
+            macro_op_arg!(MacroArg(0)),
+            macro_op_arg!(MacroArg(1)),
+            macro_op_arg!(MacroArg(2)),
           ])
         ]),
         "JQ".to_owned() => (3, vec![
           (BaseOp::JumpEqual, vec![
-            OpArgVar::MacroArg(0), OpArgVar::MacroArg(1), OpArgVar::MacroArg(2),
+            macro_op_arg!(MacroArg(0)),
+            macro_op_arg!(MacroArg(1)),
+            macro_op_arg!(MacroArg(2)),
           ])
         ]),
         "HF".to_owned() => (0, vec![
           (BaseOp::JumpEqual, vec![
-            OpArgVar::Number(REG_IP), OpArgVar::Number(REG_IP), OpArgVar::Here,
+            macro_op_arg!(Number(REG_IP)),
+            macro_op_arg!(Number(REG_IP)),
+            macro_op_arg!(Here),
           ]),
         ]),
         "JM".to_owned() => (1, vec![
           (BaseOp::Move, vec![
-            OpArgVar::Number(REG_IP), OpArgVar::MacroArg(0)]),
+            macro_op_arg!(Number(REG_IP)), macro_op_arg!(MacroArg(0))]),
         ]),
         "JI".to_owned() => (1, vec![
           (BaseOp::MoveImmediate, vec![
-            OpArgVar::Number(REG_IP), OpArgVar::MacroArg(0)]),
+            macro_op_arg!(Number(REG_IP)), macro_op_arg!(MacroArg(0))]),
         ]),
         "INC".to_owned() => (1, vec![
           (BaseOp::MoveImmediate, vec![
-            OpArgVar::Number(REG_SC), OpArgVar::Number(1)]),
+            macro_op_arg!(Number(REG_SC)), macro_op_arg!(Number(1))]),
           (BaseOp::Add, vec![
-            OpArgVar::MacroArg(0), OpArgVar::Number(REG_SC)]),
+            macro_op_arg!(MacroArg(0)), macro_op_arg!(Number(REG_SC))]),
         ]),
         "DEC".to_owned() => (1, vec![
           (BaseOp::MoveImmediate, vec![
-            OpArgVar::Number(REG_SC), OpArgVar::Number(1)]),
+            macro_op_arg!(Number(REG_SC)), macro_op_arg!(Number(1))]),
           (BaseOp::Sub, vec![
-            OpArgVar::MacroArg(0), OpArgVar::Number(REG_SC)]),
+            macro_op_arg!(MacroArg(0)), macro_op_arg!(Number(REG_SC))]),
         ]),
         "NEG".to_owned() => (1, vec![
           (BaseOp::Move, vec![
-            OpArgVar::Number(REG_SC), OpArgVar::MacroArg(0)]),
+            macro_op_arg!(Number(REG_SC)), macro_op_arg!(MacroArg(0))]),
           (BaseOp::Xor, vec![
-            OpArgVar::MacroArg(0), OpArgVar::MacroArg(0)]),
+            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(0))]),
           (BaseOp::Move, vec![
-            OpArgVar::MacroArg(0), OpArgVar::Number(REG_SC)]),
+            macro_op_arg!(MacroArg(0)), macro_op_arg!(Number(REG_SC))]),
         ]),
         "ADI".to_owned() => (2, vec![
           (BaseOp::MoveImmediate, vec![
-            OpArgVar::Number(REG_SC), OpArgVar::MacroArg(1)]),
+            macro_op_arg!(Number(REG_SC)), macro_op_arg!(MacroArg(1))]),
           (BaseOp::Add, vec![
-            OpArgVar::MacroArg(0), OpArgVar::Number(REG_SC)]),
+            macro_op_arg!(MacroArg(0)), macro_op_arg!(Number(REG_SC))]),
         ]),
         "SBI".to_owned() => (2, vec![
           (BaseOp::MoveImmediate, vec![
-            OpArgVar::Number(REG_SC), OpArgVar::MacroArg(1)]),
+            macro_op_arg!(Number(REG_SC)), macro_op_arg!(MacroArg(1))]),
           (BaseOp::Sub, vec![
-            OpArgVar::MacroArg(0), OpArgVar::Number(REG_SC)]),
+            macro_op_arg!(MacroArg(0)), macro_op_arg!(Number(REG_SC))]),
         ]),
         "PUSH".to_owned() => (1, vec![
           (BaseOp::MoveImmediate, vec![
-            OpArgVar::Number(REG_SC), OpArgVar::Number(1)]),
+            macro_op_arg!(Number(REG_SC)), macro_op_arg!(Number(1))
+          ]),
           (BaseOp::Add, vec![
-            OpArgVar::Number(REG_SP), OpArgVar::Number(REG_SC)]),
+            macro_op_arg!(Number(REG_SP)), macro_op_arg!(Number(REG_SC))
+          ]),
           (BaseOp::Load, vec![
-            OpArgVar::Number(REG_SP), OpArgVar::MacroArg(0)]),
+            macro_op_arg!(Number(REG_SP)), macro_op_arg!(MacroArg(0))
+          ]),
         ]),
         "POP".to_owned() => (1, vec![
           (BaseOp::MoveDeref, vec![
-            OpArgVar::MacroArg(0), OpArgVar::Number(REG_SP)]),
+            macro_op_arg!(MacroArg(0)), macro_op_arg!(Number(REG_SP))
+          ]),
           (BaseOp::MoveImmediate, vec![
-            OpArgVar::Number(REG_SC), OpArgVar::Number(1)]),
+            macro_op_arg!(Number(REG_SC)), macro_op_arg!(Number(1))
+          ]),
           (BaseOp::Sub, vec![
-            OpArgVar::Number(REG_SP), OpArgVar::Number(REG_SC)]),
+            macro_op_arg!(Number(REG_SP)), macro_op_arg!(Number(REG_SC))
+          ]),
+        ]),
+        "CALL".to_owned() => (1, vec![
+          (BaseOp::MoveImmediate, vec![
+            macro_op_arg!(Number(REG_SC)), macro_op_arg!(Number(1))
+          ]),
+          (BaseOp::Add, vec![
+            macro_op_arg!(Number(REG_SP)), macro_op_arg!(Number(REG_SC))
+          ]),
+          (BaseOp::MoveImmediate, vec![
+            macro_op_arg!(Number(REG_SC)),
+            macro_op_arg!(ArithOp(
+              lexer::ArithOp::Add,
+              Box::new(macro_op_arg!(Here)),
+              Box::new(macro_op_arg!(Number(6))),
+            ))
+          ]),
+          (BaseOp::Load, vec![
+            macro_op_arg!(Number(REG_SP)), macro_op_arg!(Number(REG_SC))
+          ]),
+          (BaseOp::MoveImmediate, vec![
+            macro_op_arg!(Number(REG_IP)), macro_op_arg!(MacroArg(0))
+          ])
+        ]),
+        "RET".to_owned() => (0, vec![
+          (BaseOp::MoveDeref, vec![
+            macro_op_arg!(Number(REG_SC2)), macro_op_arg!(Number(REG_SP))
+          ]),
+          (BaseOp::MoveImmediate, vec![
+            macro_op_arg!(Number(REG_SC)), macro_op_arg!(Number(1))
+          ]),
+          (BaseOp::Sub, vec![
+            macro_op_arg!(Number(REG_SP)), macro_op_arg!(Number(REG_SC))
+          ]),
+          (BaseOp::Move, vec![
+            macro_op_arg!(Number(REG_IP)), macro_op_arg!(Number(REG_SC2))
+          ])
         ]),
       },
       idx: 0,
@@ -219,15 +302,7 @@ impl Parser {
         DirectiveVar::Op(ref op, _) =>
           inst_offset += this.size_of_op_str(dir.line, dir.offset, op),
         DirectiveVar::Const(ref s, ref arg) => {
-          let n = match arg.variant {
-            OpArgVar::Number(n) => n,
-            OpArgVar::Label(ref label) => match this.labels.get(label) {
-              Some(&n) => n,
-              None => error!(arg.line, arg.offset, "Unknown label: {}", label),
-            },
-            OpArgVar::Here => inst_offset,
-            OpArgVar::MacroArg(_) => unreachable!(),
-          };
+          let n = arg.evaluate(&this.labels, &[], inst_offset);
           match this.labels.insert(s.clone(), n) {
             Some(s) => error!(
               arg.line, arg.offset, "Attempted to redefine label: {}", s
@@ -285,45 +360,13 @@ impl Iterator for Parser {
   type Item = Opcode;
 
   fn next(&mut self) -> Option<Opcode> {
-    fn get_arg(
-      this: &Parser, args: &[OpArgVar], mac_args: &[OpArg], n: usize
-    ) -> u16 {
-      match args[n] {
-        OpArgVar::Number(n) => n,
-        OpArgVar::Label(ref label) => match this.labels.get(label) {
-          Some(&n) => n,
-          None => {
-            error!(0, 0, "Use of an undefined label in macro: {}", label);
-          }
-        },
-        OpArgVar::MacroArg(n) => {
-          let marg = &mac_args[n as usize];
-          match marg.variant {
-            OpArgVar::Number(n) => n,
-            OpArgVar::Label(ref label) => match this.labels.get(label) {
-              Some(&n) => n,
-              None => error!(
-                marg.line,
-                marg.offset,
-                "Use of an undefined label: {}",
-                label
-              ),
-            },
-            OpArgVar::Here => this.inst_offset,
-            OpArgVar::MacroArg(_) => unreachable!(),
-          }
-        },
-        OpArgVar::Here => this.inst_offset,
-      }
-    }
     fn arith(
       this: &Parser,
       op: OpcodeVariant,
-      args: &[OpArgVar],
+      args: &[OpArg],
       mac_args: &[OpArg],
     ) -> (Opcode, u16) {
-      let reg = get_arg(this, args, mac_args, 0);
-      let num = get_arg(this, args, mac_args, 1);
+      let reg = args[0].evaluate(&this.labels, mac_args, this.inst_offset);
       if reg >= 0x1000 {
         error!(
           mac_args[0].line,
@@ -332,6 +375,7 @@ impl Iterator for Parser {
           reg,
         );
       }
+      let num = args[1].evaluate(&this.labels, mac_args, this.inst_offset);
       (Opcode {
         variant: op,
         reg: reg,
@@ -341,10 +385,10 @@ impl Iterator for Parser {
     fn jump(
       this: &Parser,
       op: fn(u16) -> OpcodeVariant,
-      args: &[OpArgVar],
+      args: &[OpArg],
       mac_args: &[OpArg],
     ) -> (Opcode, u16) {
-      let reg = get_arg(this, &args, mac_args, 0);
+      let reg = args[0].evaluate(&this.labels, mac_args, this.inst_offset);
       if reg >= 0x1000 {
         error!(
           mac_args[0].line,
@@ -353,8 +397,8 @@ impl Iterator for Parser {
           reg,
         );
       }
-      let num = get_arg(this, args, mac_args, 1);
-      let label = get_arg(this, args, mac_args, 2);
+      let num = args[1].evaluate(&this.labels, mac_args, this.inst_offset);
+      let label = args[2].evaluate(&this.labels, mac_args, this.inst_offset);
       (Opcode {
         variant: op(label),
         reg: reg,
@@ -365,15 +409,7 @@ impl Iterator for Parser {
       let mut data_num = Vec::new();
       // heh. datum.
       for datum in data {
-        data_num.push(match datum.variant {
-          OpArgVar::Number(n) => n,
-          OpArgVar::Label(ref label) => match this.labels.get(label) {
-            Some(&n) => n,
-            None => error!(datum.line, datum.offset, "Use of undefined label"),
-          },
-          OpArgVar::Here => this.inst_offset,
-          OpArgVar::MacroArg(_) => unreachable!(),
-        })
+        data_num.push(datum.evaluate(&this.labels, &[], this.inst_offset))
       }
       let offset = data_num.len() as u16;
       (Opcode {
@@ -384,7 +420,7 @@ impl Iterator for Parser {
     }
     // the u16 is the inst_offset to add
     fn opcode(
-      this: &Parser, op: &BaseOp, args: &[OpArgVar], mac_args: &[OpArg],
+      this: &Parser, op: &BaseOp, args: &[OpArg], mac_args: &[OpArg],
     ) -> (Opcode, u16) {
       match *op {
         BaseOp::MoveImmediate =>
@@ -437,7 +473,9 @@ impl Iterator for Parser {
           match self.macros.get(&op) {
             Some(&(ref size, ref ops)) => {
               if (mac_args.len() as u16) != *size {
-                error!(0, 0,
+                error!(
+                  dir.line,
+                  dir.offset,
                   "Invalid number of args to {}; expected {}, found {}",
                   op,
                   size,

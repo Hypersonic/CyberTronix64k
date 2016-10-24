@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 #[derive(Clone)]
 pub struct OpArg {
   pub variant: OpArgVar,
@@ -5,11 +7,55 @@ pub struct OpArg {
   pub offset: usize,
 }
 
+impl OpArg {
+  pub fn evaluate(
+    &self, labels: &HashMap<String, u16>, mac_args: &[OpArg], inst_offset: u16,
+  ) -> u16 {
+    match self.variant {
+      OpArgVar::Number(n) => n,
+      OpArgVar::Label(ref label) => match labels.get(label) {
+        Some(&n) => n,
+        None => error!(self.line, self.offset, "Undefined label: {}", label),
+      },
+      OpArgVar::MacroArg(n) =>
+        mac_args[n as usize].evaluate(labels, &[], inst_offset),
+      OpArgVar::ArithOp(ref op, ref lhs, ref rhs) => op.op(
+        lhs.evaluate(labels, mac_args, inst_offset),
+        rhs.evaluate(labels, mac_args, inst_offset),
+      ),
+      OpArgVar::Here => inst_offset,
+    }
+  }
+}
+
+#[derive(Copy, Clone)]
+pub enum ArithOp {
+  Add,
+  #[allow(dead_code)]
+  Sub,
+  #[allow(dead_code)]
+  Mul,
+  #[allow(dead_code)]
+  Div,
+}
+
+impl ArithOp {
+  pub fn op(self, lhs: u16, rhs: u16) -> u16 {
+    match self {
+      ArithOp::Add => lhs + rhs,
+      ArithOp::Sub => lhs - rhs,
+      ArithOp::Mul => lhs * rhs,
+      ArithOp::Div => lhs / rhs,
+    }
+  }
+}
+
 #[derive(Clone)]
 pub enum OpArgVar {
   Number(u16),
   Label(String),
   MacroArg(u16),
+  ArithOp(ArithOp, Box<OpArg>, Box<OpArg>),
   Here, // $
 }
 
@@ -41,6 +87,7 @@ enum TokenVar {
   StrLit(Vec<u8>),
   NumLit(u16),
   MacroArg(u16),
+  MacroLabel(Vec<u8>),
   Data,
   Equ,
   Rep,
@@ -116,6 +163,11 @@ impl Lexer {
             );
           }
         }
+        TokenVar::MacroLabel(_) => error!(
+          tok.line,
+          tok.offset,
+          "Unexpected macro label outside macro context",
+        ),
         TokenVar::MacroArg(_) => error!(
           tok.line,
           tok.offset,
@@ -233,6 +285,11 @@ impl Lexer {
               TokenVar::Comma => error!(tok.line, tok.offset, "Unexpected comma"),
               TokenVar::Label(_) =>
                 error!(tok.line, tok.offset, "Unexpected label definition"),
+              TokenVar::MacroLabel(_) => error!(
+                tok.line,
+                tok.offset,
+                "Unexpected macro label outside of macro context"
+              ),
               TokenVar::MacroArg(_) => error!(
                 tok.line,
                 tok.offset,
@@ -289,6 +346,8 @@ impl Lexer {
           error!(tok.line, tok.offset, "Unexpected string literal"),
         TokenVar::NumLit(_) =>
           error!(tok.line, tok.offset, "Unexpected number literal"),
+        TokenVar::MacroLabel(_) =>
+          error!(tok.line, tok.offset, "Unexpected macro label"),
         TokenVar::MacroArg(_) =>
           error!(tok.line, tok.offset, "Unexpected macro argument"),
         TokenVar::Macro | TokenVar::EndMacro =>
@@ -536,6 +595,35 @@ impl Lexer {
           line: line,
           offset: offset,
         })
+      }
+      Some(b'%') => {
+        let line = self.line;
+        let offset = self.offset;
+        if let Some(next_tok) = self.next_token() {
+          if let TokenVar::NumLit(n) = next_tok.variant {
+            Some(Token {
+              variant: TokenVar::MacroArg(n),
+              line: line,
+              offset: offset,
+            })
+          } else if let TokenVar::Label(label) = next_tok.variant {
+            Some(Token {
+              variant: TokenVar::MacroLabel(label),
+              line: line,
+              offset: offset,
+            })
+          } else if let TokenVar::Ident(_) = next_tok.variant {
+            error!(self.line, self.offset, "Expected a colon");
+          } else {
+            error!(
+              next_tok.line,
+              next_tok.offset,
+              "Expected a label or number"
+            );
+          }
+        } else {
+          error!(self.line, self.offset, "Unexpected EOF");
+        }
       }
       Some(ch) => error!(
         self.line,
