@@ -8,6 +8,7 @@ extern crate maplit;
 
 #[macro_use]
 mod macros;
+mod lexer;
 mod parser;
 
 pub struct Opcode {

@@ -1,3 +1,3 @@
-data "Hello" $ enddata
+data "Hello" $
 label:
 ji label
