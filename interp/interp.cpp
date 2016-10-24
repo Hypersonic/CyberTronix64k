@@ -234,7 +234,10 @@ int main(int argc, char **argv) {
         main_memory[CODE_START + i] = code[i];
     }
 
-    main_memory[INST_PTR_LOC] = CODE_START;
+    main_memory[INST_PTR_LOC] = CODE_START; // initialize instruction pointer
+    main_memory[STK_PTR_LOC] = 0x300; // initialize stack pointer
+
+    setvbuf(stdout, NULL, _IONBF, 0); // unbuffer stdout
 
     while (1) {
         interp_instr();

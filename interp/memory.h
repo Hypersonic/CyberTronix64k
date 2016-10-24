@@ -4,7 +4,8 @@
 
 typedef uint16_t mem_t;
 
-#define PRINT_LOC 0x5
+#define PUTC_LOC 0x5
+#define GETC_LOC 0x6
 
 
 class memory {
@@ -12,8 +13,12 @@ public:
     memory() : mem{0} {};
     // access methods
     mem_t& operator[](size_t idx) {
-        if (idx == PRINT_LOC) {
+        if (idx == PUTC_LOC) {
             must_print = true;
+            return mem[idx];
+        }
+        if (idx == GETC_LOC) {
+            mem[idx] = mem_t(getchar());
             return mem[idx];
         }
         return mem[idx];
@@ -21,7 +26,7 @@ public:
 
     void flush_changes() {
         if (must_print) {
-            putchar(char(mem[PRINT_LOC]));
+            putchar(char(mem[PUTC_LOC]));
             must_print = false;
         }
     }
