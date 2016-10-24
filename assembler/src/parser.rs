@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use {Opcode, OpcodeVariant};
 
-use lexer::{Directive, Lexer, OpArg};
+use lexer::{Directive, DirectiveVar, Lexer, OpArg, OpArgVar};
 
 const INST_OFFSET_BASE: u16 = 0x1000;
 
@@ -36,7 +36,7 @@ pub struct Parser {
   inst_offset: u16,
   directives: Vec<Directive>,
   labels: HashMap<String, u16>,
-  macros: HashMap<String, (u16, Vec<(BaseOp, Vec<OpArg>)>)>,
+  macros: HashMap<String, (u16, Vec<(BaseOp, Vec<OpArgVar>)>)>,
   idx: usize,
 }
 
@@ -56,120 +56,129 @@ impl Parser {
       },
       macros: hashmap! {
         "MI".to_owned() => (2, vec![
-          (BaseOp::MoveImmediate, vec![OpArg::MacroArg(0), OpArg::MacroArg(1)])
+          (BaseOp::MoveImmediate, vec![
+            OpArgVar::MacroArg(0), OpArgVar::MacroArg(1),
+          ])
         ]),
         "MV".to_owned() => (2, vec![
-          (BaseOp::Move, vec![OpArg::MacroArg(0), OpArg::MacroArg(1)])
+          (BaseOp::Move, vec![OpArgVar::MacroArg(0), OpArgVar::MacroArg(1)])
         ]),
         "MD".to_owned() => (2, vec![
-          (BaseOp::MoveDeref, vec![OpArg::MacroArg(0), OpArg::MacroArg(1)])
+          (BaseOp::MoveDeref, vec![
+            OpArgVar::MacroArg(0), OpArgVar::MacroArg(1),
+          ])
         ]),
         "LD".to_owned() => (2, vec![
-          (BaseOp::Load, vec![OpArg::MacroArg(0), OpArg::MacroArg(1)])
+          (BaseOp::Load, vec![OpArgVar::MacroArg(0), OpArgVar::MacroArg(1)])
         ]),
         "ST".to_owned() => (2, vec![
-          (BaseOp::Store, vec![OpArg::MacroArg(0), OpArg::MacroArg(1)])
+          (BaseOp::Store, vec![OpArgVar::MacroArg(0), OpArgVar::MacroArg(1)])
         ]),
         "AD".to_owned() => (2, vec![
-          (BaseOp::Add, vec![OpArg::MacroArg(0), OpArg::MacroArg(1)])
+          (BaseOp::Add, vec![OpArgVar::MacroArg(0), OpArgVar::MacroArg(1)])
         ]),
         "SB".to_owned() => (2, vec![
-          (BaseOp::Sub, vec![OpArg::MacroArg(0), OpArg::MacroArg(1)])
+          (BaseOp::Sub, vec![OpArgVar::MacroArg(0), OpArgVar::MacroArg(1)])
         ]),
         "ND".to_owned() => (2, vec![
-          (BaseOp::And, vec![OpArg::MacroArg(0), OpArg::MacroArg(1)])
+          (BaseOp::And, vec![OpArgVar::MacroArg(0), OpArgVar::MacroArg(1)])
         ]),
         "OR".to_owned() => (2, vec![
-          (BaseOp::Or, vec![OpArg::MacroArg(0), OpArg::MacroArg(1)])
+          (BaseOp::Or, vec![OpArgVar::MacroArg(0), OpArgVar::MacroArg(1)])
         ]),
         "XR".to_owned() => (2, vec![
-          (BaseOp::Xor, vec![OpArg::MacroArg(0), OpArg::MacroArg(1)])
+          (BaseOp::Xor, vec![OpArgVar::MacroArg(0), OpArgVar::MacroArg(1)])
         ]),
         "SR".to_owned() => (2, vec![
-          (BaseOp::ShiftRight, vec![OpArg::MacroArg(0), OpArg::MacroArg(1)])
+          (BaseOp::ShiftRight, vec![
+            OpArgVar::MacroArg(0), OpArgVar::MacroArg(1),
+          ])
         ]),
         "SL".to_owned() => (2, vec![
-          (BaseOp::ShiftLeft, vec![OpArg::MacroArg(0), OpArg::MacroArg(1)])
+          (BaseOp::ShiftLeft, vec![
+            OpArgVar::MacroArg(0), OpArgVar::MacroArg(1),
+          ])
         ]),
         "SA".to_owned() => (2, vec![
           (BaseOp::ShiftArithmetic, vec![
-            OpArg::MacroArg(0), OpArg::MacroArg(1),
+            OpArgVar::MacroArg(0), OpArgVar::MacroArg(1),
           ])
         ]),
         "JG".to_owned() => (3, vec![
           (BaseOp::JumpGreater, vec![
-            OpArg::MacroArg(0), OpArg::MacroArg(1), OpArg::MacroArg(2),
+            OpArgVar::MacroArg(0), OpArgVar::MacroArg(1), OpArgVar::MacroArg(2),
           ])
         ]),
         "JL".to_owned() => (3, vec![
           (BaseOp::JumpLesser, vec![
-            OpArg::MacroArg(0), OpArg::MacroArg(1), OpArg::MacroArg(2),
+            OpArgVar::MacroArg(0), OpArgVar::MacroArg(1), OpArgVar::MacroArg(2),
           ])
         ]),
         "JQ".to_owned() => (3, vec![
           (BaseOp::JumpEqual, vec![
-            OpArg::MacroArg(0), OpArg::MacroArg(1), OpArg::MacroArg(2),
+            OpArgVar::MacroArg(0), OpArgVar::MacroArg(1), OpArgVar::MacroArg(2),
           ])
         ]),
         "HF".to_owned() => (0, vec![
           (BaseOp::JumpEqual, vec![
-            OpArg::Number(REG_IP), OpArg::Number(REG_IP), OpArg::Here]),
+            OpArgVar::Number(REG_IP), OpArgVar::Number(REG_IP), OpArgVar::Here,
+          ]),
         ]),
         "JM".to_owned() => (1, vec![
           (BaseOp::Move, vec![
-            OpArg::Number(REG_IP), OpArg::MacroArg(0)]),
+            OpArgVar::Number(REG_IP), OpArgVar::MacroArg(0)]),
         ]),
         "JI".to_owned() => (1, vec![
           (BaseOp::MoveImmediate, vec![
-            OpArg::Number(REG_IP), OpArg::MacroArg(0)]),
+            OpArgVar::Number(REG_IP), OpArgVar::MacroArg(0)]),
         ]),
         "INC".to_owned() => (1, vec![
           (BaseOp::MoveImmediate, vec![
-            OpArg::Number(REG_SC), OpArg::Number(1)]),
+            OpArgVar::Number(REG_SC), OpArgVar::Number(1)]),
           (BaseOp::Add, vec![
-            OpArg::MacroArg(0), OpArg::Number(REG_SC)]),
+            OpArgVar::MacroArg(0), OpArgVar::Number(REG_SC)]),
         ]),
         "DEC".to_owned() => (1, vec![
           (BaseOp::MoveImmediate, vec![
-            OpArg::Number(REG_SC), OpArg::Number(1)]),
+            OpArgVar::Number(REG_SC), OpArgVar::Number(1)]),
           (BaseOp::Sub, vec![
-            OpArg::MacroArg(0), OpArg::Number(REG_SC)]),
+            OpArgVar::MacroArg(0), OpArgVar::Number(REG_SC)]),
         ]),
         "NEG".to_owned() => (1, vec![
           (BaseOp::Move, vec![
-            OpArg::Number(REG_SC), OpArg::MacroArg(0)]),
+            OpArgVar::Number(REG_SC), OpArgVar::MacroArg(0)]),
           (BaseOp::Xor, vec![
-            OpArg::MacroArg(0), OpArg::MacroArg(0)]),
+            OpArgVar::MacroArg(0), OpArgVar::MacroArg(0)]),
           (BaseOp::Move, vec![
-            OpArg::MacroArg(0), OpArg::Number(REG_SC)]),
+            OpArgVar::MacroArg(0), OpArgVar::Number(REG_SC)]),
         ]),
         "ADI".to_owned() => (2, vec![
           (BaseOp::MoveImmediate, vec![
-            OpArg::Number(REG_SC), OpArg::MacroArg(1)]),
+            OpArgVar::Number(REG_SC), OpArgVar::MacroArg(1)]),
           (BaseOp::Add, vec![
-            OpArg::MacroArg(0), OpArg::Number(REG_SC)]),
+            OpArgVar::MacroArg(0), OpArgVar::Number(REG_SC)]),
         ]),
         "SBI".to_owned() => (2, vec![
           (BaseOp::MoveImmediate, vec![
-            OpArg::Number(REG_SC), OpArg::MacroArg(1)]),
+            OpArgVar::Number(REG_SC), OpArgVar::MacroArg(1)]),
           (BaseOp::Sub, vec![
-            OpArg::MacroArg(0), OpArg::Number(REG_SC)]),
+            OpArgVar::MacroArg(0), OpArgVar::Number(REG_SC)]),
         ]),
         "PUSH".to_owned() => (1, vec![
           (BaseOp::MoveImmediate, vec![
-            OpArg::Number(REG_SC), OpArg::Number(1)]),
+            OpArgVar::Number(REG_SC), OpArgVar::Number(1)]),
           (BaseOp::Add, vec![
-            OpArg::Number(REG_SP), OpArg::Number(REG_SC)]),
+            OpArgVar::Number(REG_SP), OpArgVar::Number(REG_SC)]),
           (BaseOp::Load, vec![
-            OpArg::Number(REG_SP), OpArg::MacroArg(0)]),
+            OpArgVar::Number(REG_SP), OpArgVar::MacroArg(0)]),
         ]),
         "POP".to_owned() => (1, vec![
           (BaseOp::MoveDeref, vec![
-            OpArg::MacroArg(0), OpArg::Number(REG_SP)]),
+            OpArgVar::MacroArg(0), OpArgVar::Number(REG_SP)]),
           (BaseOp::MoveImmediate, vec![
-            OpArg::Number(REG_SC), OpArg::Number(1)]),
+            OpArgVar::Number(REG_SC), OpArgVar::Number(1)]),
           (BaseOp::Sub, vec![
-            OpArg::Number(REG_SP), OpArg::Number(REG_SC)]),
+            OpArgVar::Number(REG_SP), OpArgVar::Number(REG_SC)]),
         ]),
       },
       idx: 0,
@@ -181,54 +190,60 @@ impl Parser {
 
     // normal labels
     let mut inst_offset = INST_OFFSET_BASE;
-    for directive in &this.directives {
-      match *directive {
-        Directive::Label(ref s) => {
+    for dir in &this.directives {
+      match dir.variant {
+        DirectiveVar::Label(ref s) => {
           // NOTE(ubsan): can optimize this to mem::replace(String::new())
           match this.labels.insert(s.clone(), inst_offset) {
             Some(s) => {
-              abort!("Attempted to redefine label: {}", s);
+              error!(
+                dir.line, dir.offset, "Attempted to redefine label: {}", s
+              );
             }
             None => {}
           }
         }
-        Directive::Op(ref op, _) => inst_offset += this.size_of_op_str(op),
-        Directive::Const(..) => {}
-        Directive::Data(ref data) => inst_offset += data.len() as u16,
-        Directive::Macro{..} => unimplemented!(),
+        DirectiveVar::Op(ref op, _) =>
+          inst_offset += this.size_of_op_str(dir.line, dir.offset, op),
+        DirectiveVar::Const(..) => {}
+        DirectiveVar::Data(ref data) => inst_offset += data.len() as u16,
+        DirectiveVar::Macro{..} => unimplemented!(),
       }
     }
 
     // equ constants
     let mut inst_offset = INST_OFFSET_BASE;
-    for directive in &this.directives {
-      match *directive {
-        Directive::Label(..) => {}
-        Directive::Op(ref op, _) => inst_offset += this.size_of_op_str(op),
-        Directive::Const(ref s, ref arg) => {
-          let n = match *arg {
-            OpArg::Number(n) => n,
-            OpArg::Label(ref label) => match this.labels.get(label) {
+    for dir in &this.directives {
+      match dir.variant {
+        DirectiveVar::Label(..) => {}
+        DirectiveVar::Op(ref op, _) =>
+          inst_offset += this.size_of_op_str(dir.line, dir.offset, op),
+        DirectiveVar::Const(ref s, ref arg) => {
+          let n = match arg.variant {
+            OpArgVar::Number(n) => n,
+            OpArgVar::Label(ref label) => match this.labels.get(label) {
               Some(&n) => n,
-              None => abort!("Unknown label: {}", label),
+              None => error!(arg.line, arg.offset, "Unknown label: {}", label),
             },
-            OpArg::Here => inst_offset,
-            OpArg::MacroArg(_) => unreachable!(),
+            OpArgVar::Here => inst_offset,
+            OpArgVar::MacroArg(_) => unreachable!(),
           };
           match this.labels.insert(s.clone(), n) {
-            Some(s) => abort!("Attempted to redefine label: {}", s),
+            Some(s) => error!(
+              arg.line, arg.offset, "Attempted to redefine label: {}", s
+            ),
             None => {},
           }
         }
-        Directive::Data(ref data) => inst_offset += data.len() as u16,
-        Directive::Macro{..} => unimplemented!(),
+        DirectiveVar::Data(ref data) => inst_offset += data.len() as u16,
+        DirectiveVar::Macro{..} => unimplemented!(),
       }
     }
 
     this
   }
 
-  fn size_of_op_str(&self, op: &str) -> u16 {
+  fn size_of_op_str(&self, line: usize, offset: usize, op: &str) -> u16 {
     match self.macros.get(op) {
       Some(&(_, ref ops)) => {
         let mut acc = 0;
@@ -237,7 +252,7 @@ impl Parser {
         }
         acc
       }
-      None => abort!("Unknown opcode: {}", op),
+      None => error!(line, offset, "Unknown opcode: {}", op),
     }
   }
 
@@ -253,9 +268,11 @@ impl Parser {
 
   fn next_directive(&mut self) -> Option<Directive> {
     if self.idx < self.directives.len() {
-      let ret = ::std::mem::replace(
-        &mut self.directives[self.idx], Directive::Label(String::new())
-      );
+      let ret = ::std::mem::replace(&mut self.directives[self.idx], Directive {
+        variant: DirectiveVar::Label(String::new()),
+        line: 0,
+        offset: 0,
+      });
       self.idx += 1;
       Some(ret)
     } else {
@@ -269,40 +286,51 @@ impl Iterator for Parser {
 
   fn next(&mut self) -> Option<Opcode> {
     fn get_arg(
-      this: &Parser, args: &[OpArg], mac_args: &[OpArg], n: usize
+      this: &Parser, args: &[OpArgVar], mac_args: &[OpArg], n: usize
     ) -> u16 {
       match args[n] {
-        OpArg::Number(n) => n,
-        OpArg::Label(ref label) => match this.labels.get(label) {
+        OpArgVar::Number(n) => n,
+        OpArgVar::Label(ref label) => match this.labels.get(label) {
           Some(&n) => n,
           None => {
-            abort!("Use of an undefined label: {}", label);
+            error!(0, 0, "Use of an undefined label in macro: {}", label);
           }
         },
-        OpArg::MacroArg(n) => match mac_args[n as usize] {
-          OpArg::Number(n) => n,
-          OpArg::Label(ref label) => match this.labels.get(label) {
-            Some(&n) => n,
-            None => {
-              abort!("Use of an undefined label: {}", label);
-            }
-          },
-          OpArg::Here => this.inst_offset,
-          OpArg::MacroArg(_) => unreachable!(),
+        OpArgVar::MacroArg(n) => {
+          let marg = &mac_args[n as usize];
+          match marg.variant {
+            OpArgVar::Number(n) => n,
+            OpArgVar::Label(ref label) => match this.labels.get(label) {
+              Some(&n) => n,
+              None => error!(
+                marg.line,
+                marg.offset,
+                "Use of an undefined label: {}",
+                label
+              ),
+            },
+            OpArgVar::Here => this.inst_offset,
+            OpArgVar::MacroArg(_) => unreachable!(),
+          }
         },
-        OpArg::Here => this.inst_offset,
+        OpArgVar::Here => this.inst_offset,
       }
     }
     fn arith(
       this: &Parser,
       op: OpcodeVariant,
-      args: &[OpArg],
+      args: &[OpArgVar],
       mac_args: &[OpArg],
     ) -> (Opcode, u16) {
       let reg = get_arg(this, args, mac_args, 0);
       let num = get_arg(this, args, mac_args, 1);
       if reg >= 0x1000 {
-        abort!("Register memory is out of range: {}", reg);
+        error!(
+          mac_args[0].line,
+          mac_args[0].offset,
+          "Register memory is out of range: {}",
+          reg,
+        );
       }
       (Opcode {
         variant: op,
@@ -313,15 +341,20 @@ impl Iterator for Parser {
     fn jump(
       this: &Parser,
       op: fn(u16) -> OpcodeVariant,
-      args: &[OpArg],
+      args: &[OpArgVar],
       mac_args: &[OpArg],
     ) -> (Opcode, u16) {
       let reg = get_arg(this, &args, mac_args, 0);
       if reg >= 0x1000 {
-        abort!("Register memory is out of range: {}", reg);
+        error!(
+          mac_args[0].line,
+          mac_args[0].offset,
+          "Register memory is out of range: {}",
+          reg,
+        );
       }
-      let num = get_arg(this, &args, mac_args, 1);
-      let label = get_arg(this, &args, mac_args, 2);
+      let num = get_arg(this, args, mac_args, 1);
+      let label = get_arg(this, args, mac_args, 2);
       (Opcode {
         variant: op(label),
         reg: reg,
@@ -332,14 +365,14 @@ impl Iterator for Parser {
       let mut data_num = Vec::new();
       // heh. datum.
       for datum in data {
-        data_num.push(match datum {
-          OpArg::Number(n) => n,
-          OpArg::Label(ref label) => match this.labels.get(label) {
+        data_num.push(match datum.variant {
+          OpArgVar::Number(n) => n,
+          OpArgVar::Label(ref label) => match this.labels.get(label) {
             Some(&n) => n,
-            None => abort!("Use of undefined label"),
+            None => error!(datum.line, datum.offset, "Use of undefined label"),
           },
-          OpArg::Here => this.inst_offset,
-          OpArg::MacroArg(_) => unreachable!(),
+          OpArgVar::Here => this.inst_offset,
+          OpArgVar::MacroArg(_) => unreachable!(),
         })
       }
       let offset = data_num.len() as u16;
@@ -351,7 +384,7 @@ impl Iterator for Parser {
     }
     // the u16 is the inst_offset to add
     fn opcode(
-      this: &Parser, op: &BaseOp, args: &[OpArg], mac_args: &[OpArg],
+      this: &Parser, op: &BaseOp, args: &[OpArgVar], mac_args: &[OpArg],
     ) -> (Opcode, u16) {
       match *op {
         BaseOp::MoveImmediate =>
@@ -380,13 +413,13 @@ impl Iterator for Parser {
           jump(this, OpcodeVariant::JumpEqual, args, &mac_args),
       }
     }
-    if let Some(directive) = self.next_directive() {
-      match directive {
-        Directive::Op(op, mac_args) => {
+    if let Some(dir) = self.next_directive() {
+      match dir.variant {
+        DirectiveVar::Op(op, mac_args) => {
           match self.macros.get(&op) {
             Some(&(ref size, ref ops)) => {
               if (mac_args.len() as u16) != *size {
-                abort!(
+                error!(0, 0,
                   "Invalid number of args to {}; expected {}, found {}",
                   op,
                   size,
@@ -399,7 +432,7 @@ impl Iterator for Parser {
                 self.op_buffer.push(op);
               }
             },
-            None => abort!("Unknown opcode"),
+            None => error!(dir.line, dir.offset, "Unknown opcode"),
           }
           if let Some(op) = self.op_buffer.get_mut(0) {
             self.op_buffer_idx = 1;
@@ -411,21 +444,22 @@ impl Iterator for Parser {
           }
           self.next()
         },
-        Directive::Data(nums) => {
+        DirectiveVar::Data(nums) => {
           let (data, offset) = data(self, nums);
           self.inst_offset += offset;
           Some(data)
         }
-        Directive::Label(..) | Directive::Const(..) => {
+        DirectiveVar::Label(..) | DirectiveVar::Const(..) => {
           while let Some(dir) = self.directives.get(self.idx) {
-            match *dir {
-              Directive::Label(..) | Directive::Const(..) => self.idx += 1,
+            match dir.variant {
+              DirectiveVar::Label(..) | DirectiveVar::Const(..) =>
+                self.idx += 1,
               _ => break,
             }
           }
           self.next()
         },
-        Directive::Macro{..} => unimplemented!(),
+        DirectiveVar::Macro{..} => unimplemented!(),
       }
     } else {
       None

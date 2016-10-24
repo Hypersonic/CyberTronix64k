@@ -1,5 +1,12 @@
 #[derive(Clone)]
-pub enum OpArg {
+pub struct OpArg {
+  pub variant: OpArgVar,
+  pub line: usize,
+  pub offset: usize,
+}
+
+#[derive(Clone)]
+pub enum OpArgVar {
   Number(u16),
   Label(String),
   MacroArg(u16),
@@ -7,7 +14,7 @@ pub enum OpArg {
 }
 
 #[derive(Clone)]
-pub enum Directive {
+pub enum DirectiveVar {
   Label(String),
   Op(String, Vec<OpArg>),
   Const(String, OpArg),
@@ -21,7 +28,14 @@ pub enum Directive {
   },
 }
 
-enum Token {
+#[derive(Clone)]
+pub struct Directive {
+  pub variant: DirectiveVar,
+  pub line: usize,
+  pub offset: usize,
+}
+
+enum TokenVar {
   Ident(Vec<u8>),
   Label(Vec<u8>),
   StrLit(Vec<u8>),
@@ -37,137 +51,251 @@ enum Token {
   Newline,
 }
 
+struct Token {
+  variant: TokenVar,
+  line: usize,
+  offset: usize,
+}
+
 pub struct Lexer {
   input: Vec<u8>,
   idx: usize,
+  line: usize,
+  offset: usize,
 }
 impl Lexer {
   pub fn new(input: Vec<u8>) -> Self {
     Lexer {
       input: input,
-      idx: 0
+      idx: 0,
+      line: 1,
+      offset: 0,
     }
   }
 
   pub fn next_directive(&mut self) -> Option<Directive> {
-    fn to_string(v: Vec<u8>) -> String {
+    fn to_string(line: usize, offset: usize, v: Vec<u8>) -> String {
       match String::from_utf8(v) {
         Ok(s) => s,
-        Err(_) => abort!("Invalid utf8"),
+        Err(_) => error!(line, offset, "Invalid utf8"),
       }
     }
     // None means EOL
     fn get_op_arg(tok: Token) -> Option<OpArg> {
-      match tok {
-        Token::Newline => None,
-        Token::Here => Some(OpArg::Here),
-        Token::Ident(id) => Some(OpArg::Label(to_string(id))),
-        Token::NumLit(n) => Some(OpArg::Number(n)),
-        Token::StrLit(s) => {
+      match tok.variant {
+        TokenVar::Newline => None,
+        TokenVar::Here => Some(OpArg {
+          variant: OpArgVar::Here,
+          line: tok.line,
+          offset: tok.offset,
+        }),
+        TokenVar::Ident(id) => Some(OpArg {
+          variant: OpArgVar::Label(to_string(tok.line, tok.offset, id)),
+          line: tok.line,
+          offset: tok.offset,
+        }),
+        TokenVar::NumLit(n) => Some(OpArg {
+          variant: OpArgVar::Number(n),
+          line: tok.line,
+          offset: tok.offset,
+        }),
+        TokenVar::StrLit(s) => {
           if s.len() == 1 {
-            Some(OpArg::Number(s[0] as u16))
+            Some(OpArg {
+              variant: OpArgVar::Number(s[0] as u16),
+              line: tok.line,
+              offset: tok.offset,
+            })
           } else if s.is_empty() {
-            abort!("Unexpected empty string literal");
+            error!(
+              tok.line, tok.offset, "Unexpected empty string literal",
+            );
           } else {
-            abort!("Unexpected multi-char string literal");
+            error!(
+              tok.line, tok.offset, "Unexpected multi-char string literal",
+            );
           }
         }
-        Token::MacroArg(_) =>
-          abort!("Unexpected macro argument outside macro context"),
-        Token::Macro => abort!("Unexpected macro start"),
-        Token::EndMacro => abort!("Unexpected macro end"),
-        Token::Equ => abort!("Unexpected EQU directive"),
-        Token::Rep => abort!("Unexpected REP directive"),
-        Token::Data => abort!("Unexpected DATA directive"),
-        Token::Comma => abort!("Unexpected comma"),
-        Token::Label(_) => abort!("Unexpected label"),
+        TokenVar::MacroArg(_) => error!(
+          tok.line,
+          tok.offset,
+          "Unexpected macro argument outside macro context",
+        ),
+        TokenVar::Macro => error!(
+          tok.line, tok.offset, "Unexpected macro start",
+        ),
+        TokenVar::EndMacro => error!(
+          tok.line, tok.offset, "Unexpected macro end",
+        ),
+        TokenVar::Equ => error!(
+          tok.line, tok.offset, "Unexpected EQU directive",
+        ),
+        TokenVar::Rep => error!(
+          tok.line, tok.offset, "Unexpected REP directive",
+        ),
+        TokenVar::Data => error!(
+          tok.line, tok.offset, "Unexpected DATA directive",
+        ),
+        TokenVar::Comma => error!(
+          tok.line, tok.offset, "Unexpected comma",
+        ),
+        TokenVar::Label(_) => error!(
+          tok.line, tok.offset, "Unexpected label",
+        ),
       }
     }
-    match self.next_token() {
-      Some(Token::Newline) => self.next_directive(),
-      Some(Token::Label(label)) => Some(Directive::Label(to_string(label))),
-      Some(Token::Ident(op)) => {
-        let op = to_string(op);
-        let mut args = Vec::new();
-        while let Some(tok) = self.next_token() {
-          if let Some(arg) = get_op_arg(tok) {
-            args.push(arg);
-          }
-          if let Some(tok) = self.next_token() {
-            if let Token::Newline = tok {
-              break;
-            } else if let Token::Comma = tok {
-            } else {
-              abort!("Expected a comma or a newline");
+    if let Some(tok) = self.next_token() {
+      match tok.variant {
+        TokenVar::Newline => self.next_directive(),
+        TokenVar::Label(label) => Some(Directive {
+          variant: DirectiveVar::Label(to_string(tok.line, tok.offset, label)),
+          line: tok.line,
+          offset: tok.offset,
+        }),
+        TokenVar::Ident(op) => {
+          let line = tok.line;
+          let offset = tok.offset;
+          let op = to_string(tok.line, tok.offset, op);
+          let mut args = Vec::new();
+          while let Some(tok) = self.next_token() {
+            if let Some(arg) = get_op_arg(tok) {
+              args.push(arg);
             }
-          }
-        }
-        Some(Directive::Op(op, args))
-      },
-      Some(Token::Data) => {
-        let mut data = Vec::new();
-        while let Some(tok) = self.next_token() {
-          match tok {
-            Token::Rep => {
-              let repetitions = match self.next_token() {
-                Some(tok) => match tok {
-                  Token::NumLit(n) => n,
-                  _ => abort!("Expected literal number of repetitions"),
-                },
-                None => abort!("Unexpected EOF"),
-              };
-              match self.next_token() {
-                Some(tok) => match get_op_arg(tok) {
-                  Some(op) => for _ in 0..repetitions {
-                    data.push(op.clone());
-                  },
-                  None => abort!("Unexpected newline"),
-                },
-                None => abort!("Unexpected EOF"),
+            if let Some(tok) = self.next_token() {
+              if let TokenVar::Newline = tok.variant {
+                break;
+              } else if let TokenVar::Comma = tok.variant {
+              } else {
+                error!(tok.line, tok.offset, "Expected a comma or a newline");
               }
             }
-            Token::Ident(id) => data.push(OpArg::Label(to_string(id))),
-            Token::StrLit(s) =>
-              data.extend(s.into_iter().map(|c| OpArg::Number(c as u16))),
-            Token::NumLit(n) => data.push(OpArg::Number(n)),
-            Token::Here => data.push(OpArg::Here),
-            Token::Newline => break,
-            Token::Comma => abort!("Unexpected comma"),
-            Token::Label(_) => abort!("Unexpected label definition"),
-            Token::MacroArg(_) =>
-              abort!("Unexpected macro argument outside of macro context"),
-            Token::Data => abort!("Unexpected DATA directive"),
-            Token::Equ => abort!("Unexpected EQU directive"),
-            Token::Macro => abort!("Unexpected MACRO directive"),
-            Token::EndMacro => abort!("Unexpected ENDMACRO directive"),
           }
+          Some(Directive {
+            variant: DirectiveVar::Op(op, args),
+            line: line,
+            offset: offset,
+          })
+        },
+        TokenVar::Data => {
+          let line = tok.line;
+          let offset = tok.offset;
+          let mut data = Vec::new();
+          while let Some(tok) = self.next_token() {
+            match tok.variant {
+              TokenVar::Rep => {
+                let repetitions = match self.next_token() {
+                  Some(tok) => match tok.variant {
+                    TokenVar::NumLit(n) => n,
+                    _ => error!(
+                      tok.line,
+                      tok.offset,
+                      "Expected literal number of repetitions",
+                    ),
+                  },
+                  None => error!(tok.line, tok.offset, "Unexpected EOF"),
+                };
+                match self.next_token() {
+                  Some(tok) => match get_op_arg(tok) {
+                    Some(op) => for _ in 0..repetitions {
+                      data.push(op.clone());
+                    },
+                    None =>
+                      error!(self.line, self.offset, "Unexpected newline"),
+                  },
+                  None => error!(tok.line, tok.offset, "Unexpected EOF"),
+                }
+              }
+              TokenVar::Ident(id) => data.push(OpArg {
+                variant: OpArgVar::Label(to_string(tok.line, tok.offset, id)),
+                line: tok.line,
+                offset: tok.offset,
+              }),
+              TokenVar::StrLit(s) => {
+                let line = tok.line;
+                let offset = tok.offset;
+                data.extend(s.into_iter().map(|c| OpArg {
+                  variant: OpArgVar::Number(c as u16),
+                  line: line,
+                  offset: offset,
+                }))
+              }
+              TokenVar::NumLit(n) => data.push(OpArg {
+                variant: OpArgVar::Number(n),
+                line: tok.line,
+                offset: tok.offset,
+              }),
+              TokenVar::Here => data.push(OpArg {
+                variant: OpArgVar::Here,
+                line: tok.line,
+                offset: tok.offset,
+              }),
+              TokenVar::Newline => break,
+              TokenVar::Comma => error!(tok.line, tok.offset, "Unexpected comma"),
+              TokenVar::Label(_) =>
+                error!(tok.line, tok.offset, "Unexpected label definition"),
+              TokenVar::MacroArg(_) => error!(
+                tok.line,
+                tok.offset,
+                "Unexpected macro argument outside of macro context",
+              ),
+              TokenVar::Data =>
+                error!(tok.line, tok.offset, "Unexpected DATA directive"),
+              TokenVar::Equ =>
+                error!(tok.line, tok.offset, "Unexpected EQU directive"),
+              TokenVar::Macro =>
+                error!(tok.line, tok.offset, "Unexpected MACRO directive"),
+              TokenVar::EndMacro =>
+                error!(tok.line, tok.offset, "Unexpected ENDMACRO directive"),
+            }
+          }
+          Some(Directive {
+            variant: DirectiveVar::Data(data),
+            line: line,
+            offset: offset,
+          })
         }
-        Some(Directive::Data(data))
+        TokenVar::Equ => {
+          let line = tok.line;
+          let offset = tok.offset;
+          let name = if let Some(tok) = self.next_token() {
+            match tok.variant {
+              TokenVar::Ident(s) => to_string(tok.line, tok.offset, s),
+              _ => error!(
+                tok.line, tok.offset, "Expected identifier for EQU directive",
+              ),
+            }
+          } else {
+              error!(tok.line, tok.offset, "Unexpected EOF")
+          };
+          let constant = if let Some(tok) = self.next_token() {
+            match get_op_arg(tok) {
+              Some(op) => op,
+              None => error!(self.line, self.offset, "Unexpected newline"),
+            }
+          } else {
+            error!(tok.line, tok.offset, "Unexpected EOF")
+          };
+          Some(Directive {
+            variant: DirectiveVar::Const(name, constant),
+            line: line,
+            offset: offset,
+          })
+        }
+        TokenVar::Rep =>
+          error!(tok.line, tok.offset, "Unexpected REP directive"),
+        TokenVar::Comma => error!(tok.line, tok.offset, "Unexpected comma"),
+        TokenVar::Here => error!(tok.line, tok.offset, "Unexpected $"),
+        TokenVar::StrLit(_) =>
+          error!(tok.line, tok.offset, "Unexpected string literal"),
+        TokenVar::NumLit(_) =>
+          error!(tok.line, tok.offset, "Unexpected number literal"),
+        TokenVar::MacroArg(_) =>
+          error!(tok.line, tok.offset, "Unexpected macro argument"),
+        TokenVar::Macro | TokenVar::EndMacro =>
+          error!(tok.line, tok.offset, "Macros are not yet implemented"),
       }
-      Some(Token::Equ) => {
-        let name = match self.next_token() {
-          Some(Token::Ident(s)) => to_string(s),
-          Some(_) => abort!("Expected identifier for EQU directive"),
-          None => abort!("Unexpected EOF"),
-        };
-        let constant = match self.next_token() {
-          Some(tok) => match get_op_arg(tok) {
-            Some(op) => op,
-            None => abort!("Unexpected newline"),
-          },
-          None => abort!("Unexpected EOF"),
-        };
-        Some(Directive::Const(name, constant))
-      }
-      Some(Token::Rep) => abort!("Unexpected REP directive"),
-      Some(Token::Comma) => abort!("Unexpected comma"),
-      Some(Token::Here) => abort!("Unexpected $"),
-      Some(Token::StrLit(_)) => abort!("Unexpected string literal"),
-      Some(Token::NumLit(_)) => abort!("Unexpected number literal"),
-      Some(Token::MacroArg(_)) => abort!("Unexpected macro argument"),
-      Some(Token::Macro) | Some(Token::EndMacro) =>
-        abort!("Macros are not yet implemented"),
-      None => None,
+    } else {
+      None
     }
   }
 
@@ -179,6 +307,12 @@ impl Lexer {
     match self.peek_char() {
       Some(c) => {
         self.idx += 1;
+        if c == b'\n' {
+          self.offset = 0;
+          self.line += 1;
+        } else {
+          self.offset += 1;
+        }
         Some(c)
       }
       None => None,
@@ -224,9 +358,9 @@ impl Lexer {
         if let Some(b'\n') = ch {
           self.next_token()
         } else if let Some(ch) = ch {
-          abort!("Unexpected `{}' ({})", ch as char, ch)
+          error!(self.line, self.offset, "Unexpected `{}' ({})", ch as char, ch)
         } else {
-          abort!("Unexpected EOF")
+          error!(self.line, self.offset, "Unexpected EOF")
         }
       }
       Some(ch) if ch == b'#' || ch == b';' => {
@@ -243,10 +377,24 @@ impl Lexer {
         }
         self.next_token()
       }
-      Some(b'\n') => Some(Token::Newline),
-      Some(b',') => Some(Token::Comma),
-      Some(b'$') => Some(Token::Here),
+      Some(b'\n') => Some(Token {
+        variant: TokenVar::Newline,
+        line: self.line,
+        offset: self.offset,
+      }),
+      Some(b',') => Some(Token {
+        variant: TokenVar::Comma,
+        line: self.line,
+        offset: self.offset,
+      }),
+      Some(b'$') => Some(Token {
+        variant: TokenVar::Here,
+        line: self.line,
+        offset: self.offset,
+      }),
       Some(quote) if quote == b'\'' || quote == b'"' => {
+        let line = self.line;
+        let offset = self.offset;
         let mut buff = Vec::new();
         while let Some(ch) = self.get_char() {
           if ch == b'\\' {
@@ -262,13 +410,18 @@ impl Lexer {
                       break;
                     }
                   } else {
-                    abort!("Unexpected EOF")
+                    error!(self.line, self.offset, "Unexpected EOF")
                   }
                 }
               },
               Some(b'n') => buff.push(b'\n'),
-              Some(ch) => abort!("Unrecogized escape sequence: \\{}", ch),
-              None => abort!("Unexpected EOF"),
+              Some(ch) => error!(
+                self.line,
+                self.offset,
+                "Unrecogized escape sequence: \\{}",
+                ch
+              ),
+              None => error!(self.line, self.offset, "Unexpected EOF"),
             }
           } else if ch == quote {
             break;
@@ -276,9 +429,15 @@ impl Lexer {
             buff.push(ch);
           }
         }
-        Some(Token::StrLit(buff))
+        Some(Token {
+          variant: TokenVar::StrLit(buff),
+          line: line,
+          offset: offset,
+        })
       }
       Some(ch) if is_ident_start(ch) => {
+        let line = self.line;
+        let offset = self.offset;
         let mut ret = Vec::new();
         ret.push(to_upper(ch));
         while let Some(c) = self.peek_char() {
@@ -287,26 +446,38 @@ impl Lexer {
             ret.push(to_upper(c));
           } else if c == b':' {
             self.get_char();
-            return Some(Token::Label(ret));
+            return Some(Token {
+              variant: TokenVar::Label(ret),
+              line: line,
+              offset: offset,
+            });
           } else {
             break;
           }
         }
-        if ret == b"DATA" {
-          Some(Token::Data)
-        } else if ret == b"EQU" {
-          Some(Token::Equ)
-        } else if ret == b"REP" {
-          Some(Token::Rep)
-        } else if ret == b"MACRO" {
-          Some(Token::Macro)
-        } else if ret == b"ENDMACRO" {
-          Some(Token::EndMacro)
-        } else {
-          Some(Token::Ident(ret))
-        }
+        Some(Token {
+          variant: {
+            if ret == b"DATA" {
+              TokenVar::Data
+            } else if ret == b"EQU" {
+              TokenVar::Equ
+            } else if ret == b"REP" {
+              TokenVar::Rep
+            } else if ret == b"MACRO" {
+              TokenVar::Macro
+            } else if ret == b"ENDMACRO" {
+              TokenVar::EndMacro
+            } else {
+              TokenVar::Ident(ret)
+            }
+          },
+          line: line,
+          offset: offset,
+        })
       }
       Some(ch) if is_num(ch) => {
+        let line = self.line;
+        let offset = self.offset;
         let mut base = 10;
         let mut ret = Vec::new();
         if ch == b'0' {
@@ -316,12 +487,18 @@ impl Lexer {
             Some(b'D') => base = 10,
             Some(b'X') => base = 16,
             Some(ch) if is_num(ch) => ret.push(ch),
-            Some(ch) if is_alpha(ch) => abort!(
+            Some(ch) if is_alpha(ch) => error!(
+              self.line,
+              self.offset,
               "Unsupported character in a base-{} literal: {}",
               base,
               ch as char,
             ),
-            Some(_) | None => return Some(Token::NumLit(0)),
+            Some(_) | None => return Some(Token {
+              variant: TokenVar::NumLit(0),
+              line: line,
+              offset: offset,
+            })
           }
           self.get_char();
         }
@@ -331,7 +508,9 @@ impl Lexer {
             self.get_char();
             ret.push(ch);
           } else if is_alpha(ch) {
-            abort!(
+            error!(
+              self.line,
+              self.offset,
               "Unsupported character in a base-{} literal: {}",
               base,
               ch as char,
@@ -344,19 +523,27 @@ impl Lexer {
           let add = if is_alpha(el) { el - b'A' + 10 } else { el - b'0' };
           match acc.checked_mul(base).and_then(|a| a.checked_add(add as u16)) {
             Some(a) => a,
-            None => {
-              abort!(
-                "Attempted to write an overflowing number literal: {}",
-                ::std::str::from_utf8(&ret).unwrap(),
-              );
-            }
+            None => error!(
+              self.line,
+              self.offset,
+              "Attempted to write an overflowing number literal: {}",
+              ::std::str::from_utf8(&ret).unwrap(),
+            ),
           }
         });
-        Some(Token::NumLit(ret))
+        Some(Token {
+          variant: TokenVar::NumLit(ret),
+          line: line,
+          offset: offset,
+        })
       }
-      Some(ch) => {
-        abort!("Unsupported character: `{}' ({})", ch as char, ch);
-      }
+      Some(ch) => error!(
+        self.line,
+        self.offset,
+        "Unsupported character: `{}' ({})",
+        ch as char,
+        ch
+      ),
       None => None,
     }
   }

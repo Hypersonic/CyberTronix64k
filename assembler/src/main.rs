@@ -84,7 +84,7 @@ fn main() {
   let inpfilename = match args.get(1) {
     Some(f) => f,
     None => {
-      abort!("usage: {} filename -o output",
+      error_nln!("usage: {} filename -o output",
         args
           .get(0)
           .map(|own| own.to_string_lossy())
@@ -95,14 +95,14 @@ fn main() {
   match args.get(2) {
     Some(s) if s == "-o" => {},
     Some(s) => {
-      abort!(
+      error_nln!(
         "The second argument *must* be `-o' until I fix argument handling\n\
         (it was {})",
         s.to_string_lossy(),
       );
     }
     None => {
-      abort!("usage: {} filename -o output",
+      error_nln!("usage: {} filename -o output",
         args
           .get(0)
           .map(|own| own.to_string_lossy())
@@ -113,7 +113,7 @@ fn main() {
   let outfilename = match args.get(3) {
     Some(f) => f,
     None => {
-      abort!("usage: {} filename -o output",
+      error_nln!("usage: {} filename -o output",
         args
           .get(0)
           .map(|own| own.to_string_lossy())
@@ -125,7 +125,7 @@ fn main() {
   let mut inp = match File::open(inpfilename) {
     Ok(file) => file,
     Err(e) => {
-      abort!(
+      error_nln!(
         "Failed to open input file: `{}'\nError: {}",
         inpfilename.to_string_lossy(),
         e,
@@ -137,7 +137,7 @@ fn main() {
   match inp.read_to_end(&mut bytes) {
     Ok(_) => {},
     Err(e) => {
-      abort!(
+      error_nln!(
         "Failed to read file: `{}'\nError: {}",
         inpfilename.to_string_lossy(),
         e,
@@ -162,7 +162,7 @@ fn main() {
       match res {
         Ok(_) => {}
         Err(e) => {
-          abort!("Error while writing: {}", e);
+          error_nln!("Error while writing: {}", e);
         }
       }
     };
@@ -196,10 +196,10 @@ fn main() {
   match File::create(outfilename) {
     Ok(mut file) => match file.write_all(&out) {
       Ok(_) => {}
-      Err(e) => abort!("Error while writing: {}", e),
+      Err(e) => error_nln!("Error while writing: {}", e),
     },
     Err(e) => {
-      abort!(
+      error_nln!(
         "Failed to open output file: `{}'\nError: {}",
         outfilename.to_string_lossy(),
         e,
