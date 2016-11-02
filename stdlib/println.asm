@@ -43,6 +43,7 @@ print:
 	  __l_print_loop_start:
 		  md STDOUT, __v_print_ptr
 			ad __v_print_ptr, __v_print_one
+			ji __l_print_loop_start
 	  __l_print_loop_end:
 	ret
 
