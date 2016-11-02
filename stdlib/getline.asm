@@ -5,6 +5,12 @@ EQU S00 0x40
 EQU S01 0x41
 EQU S02 0x42
 EQU S03 0x43
+EQU S04 0x44
+EQU S05 0x45
+EQU S06 0x46
+EQU S07 0x47
+EQU S08 0x48
+EQU S09 0x49
 
 # struct str {
 #	  char* ptr;
@@ -38,14 +44,16 @@ EQU __v_getline_start s02
 EQU __v_getline_end s03
 EQU __v_getline_c s04
 EQU __v_getline_len s05
+EQU __v_getline_nl s06
 getline:
+	mi __v_getline_nl, '\n'
   mv __v_getline_start, __a_getline_ptr
   mv __v_getline_end, __a_getline_ptr
   ad __v_getline_end, __a_getline_capacity
   jq __v_getline_start, __v_getline_end, __l_getline_loop_break
 		__v_getline_loop_start:
 			mv __v_getline_c, STDIN
-			jq __v_getline_c, '\n', __l_getline_loop_loop_break
+			jq __v_getline_c, __v_getline_nl, __l_getline_loop_break
 			ld __v_getline_start, __v_getline_c
 			inc __v_getline_start
 			ji __v_getline_loop_start
