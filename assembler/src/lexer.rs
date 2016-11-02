@@ -1,10 +1,67 @@
 use std::collections::HashMap;
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::fmt::{self, Display};
+
+// index into the file vector
+#[derive(Copy, Clone)]
+pub struct File(u32);
+#[derive(Clone)]
+pub struct Files {
+  vec: Rc<RefCell<Vec<String>>>,
+  hm: Rc<RefCell<HashMap<String, u32>>>,
+}
+
+impl Files {
+  pub fn get(&self, file: File) -> Option<&str> {
+    // the reason this is safe is because the Strings in the vector
+    // aren't deallocated until all Files objects are deallocated
+    unsafe {
+      self.vec
+        .borrow()
+        .get(file.0 as usize)
+        .map(|x| &*(&**x as *const str))
+    }
+  }
+
+  pub fn push(&self, s: &str) -> File {
+    let mut hm = self.hm.borrow_mut();
+    let mut vec = self.vec.borrow_mut();
+    match hm.get(s) {
+      Some(&f) => File(f),
+      None => {
+        let f = vec.len() as u32;
+        hm.insert(s.to_owned(), f);
+        vec.push(s.to_owned());
+        File(f)
+      },
+    }
+  }
+}
+
+pub struct Position {
+  pub line: usize,
+  pub offset: usize,
+  pub file: File,
+  files: Files,
+}
+
+impl Display for Position {
+  fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    write!(
+      f,
+      "{}:{}:{}",
+      self.files.get(self.file).unwrap(),
+      self.line,
+      self.offset,
+    )
+  }
+}
 
 #[derive(Clone)]
 pub struct OpArg {
   pub variant: OpArgVar,
-  pub line: usize,
-  pub offset: usize,
+  pub position: Position,
 }
 
 impl OpArg {
@@ -15,7 +72,7 @@ impl OpArg {
       OpArgVar::Number(n) => n,
       OpArgVar::Label(ref label) => match labels.get(label) {
         Some(&n) => n,
-        None => error!(self.line, self.offset, "Undefined label: {}", label),
+        None => error!(self.position, "Undefined label: {}", label),
       },
       OpArgVar::MacroArg(n) =>
         mac_args[n as usize].evaluate(labels, &[], inst_offset),
@@ -100,8 +157,7 @@ enum TokenVar {
 
 struct Token {
   variant: TokenVar,
-  line: usize,
-  offset: usize,
+  pos: Position,
 }
 
 pub struct Lexer {
@@ -121,10 +177,10 @@ impl Lexer {
   }
 
   pub fn next_directive(&mut self) -> Option<Directive> {
-    fn to_string(line: usize, offset: usize, v: Vec<u8>) -> String {
+    fn to_string(pos: &Position, v: Vec<u8>) -> String {
       match String::from_utf8(v) {
         Ok(s) => s,
-        Err(_) => error!(line, offset, "Invalid utf8"),
+        Err(_) => error!(pos, "Invalid utf8"),
       }
     }
     // None means EOL
@@ -155,33 +211,23 @@ impl Lexer {
             })
           } else if s.is_empty() {
             error!(
-              tok.line, tok.offset, "Unexpected empty string literal",
+              tok.pos, "Unexpected empty string literal",
             );
           } else {
             error!(
-              tok.line, tok.offset, "Unexpected multi-char string literal",
+              tok.pos, "Unexpected multi-char string literal",
             );
           }
         }
         TokenVar::MacroLabel(_) => error!(
-          tok.line,
-          tok.offset,
-          "Unexpected macro label outside macro context",
+          tok.pos, "Unexpected macro label outside macro context",
         ),
         TokenVar::MacroArg(_) => error!(
-          tok.line,
-          tok.offset,
-          "Unexpected macro argument outside macro context",
+          tok.pos, "Unexpected macro argument outside macro context",
         ),
-        TokenVar::Macro => error!(
-          tok.line, tok.offset, "Unexpected macro start",
-        ),
-        TokenVar::EndMacro => error!(
-          tok.line, tok.offset, "Unexpected macro end",
-        ),
-        TokenVar::Equ => error!(
-          tok.line, tok.offset, "Unexpected EQU directive",
-        ),
+        TokenVar::Macro => error!(tok.pos, "Unexpected macro start"),
+        TokenVar::EndMacro => error!(tok.pos, "Unexpected macro end"),
+        TokenVar::Equ => error!(tok.pos, "Unexpected EQU directive"),
         TokenVar::Rep => error!(
           tok.line, tok.offset, "Unexpected REP directive",
         ),
