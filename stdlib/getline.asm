@@ -43,11 +43,13 @@ getline:
   mv __v_getline_end, __a_getline_ptr
   ad __v_getline_end, __a_getline_capacity
   jq __v_getline_start, __v_getline_end, __l_getline_loop_break
-    mv __v_getline_c, STDIN
-    jq __v_getline_c, '\n', __l_getline_loop_break
-    ld __v_getline_start, __v_getline_c
-    inc __v_getline_start
-  __l_getline_loop_break:
+		__v_getline_loop_start:
+			mv __v_getline_c, STDIN
+			jq __v_getline_c, '\n', __l_getline_loop_loop_break
+			ld __v_getline_start, __v_getline_c
+			inc __v_getline_start
+			ji __v_getline_loop_start
+		__l_getline_loop_break:
   mv __v_getline_len, __v_getline_end
   sb __v_getline_len, __a_getline_ptr
   ret
