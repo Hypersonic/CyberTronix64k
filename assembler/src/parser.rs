@@ -325,9 +325,14 @@ impl Parser {
       fn make_path(pos: &Position, vec: Vec<String>) -> String {
         use std::path::Path;
         assert!(!vec.is_empty(), "ICE: DirectiveVar::Import had an empty Vec");
-        let mut ret =
-          Path::new(pos.file())
-            .parent().map(|p| p.to_str().unwrap()).unwrap_or(".").to_owned();
+        let mut ret = match Path::new(pos.file()).canonicalize() {
+          Ok(c) => c
+            .parent()
+            .map(|p| p.to_str().unwrap())
+            .unwrap_or(".")
+            .to_owned(),
+          Err(e) => panic!("ICE: {}", e),
+        };
         ret.push('/');
         for dir in vec {
           ret.push_str(&dir);
