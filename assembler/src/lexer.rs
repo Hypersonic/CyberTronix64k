@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::fmt::{self, Display};
+use std::path::Path;
 
 // index into the file vector
 #[derive(Copy, Clone, PartialEq)]
@@ -83,6 +84,7 @@ impl Position {
     }
   }
 
+  #[allow(unused)]
   pub fn file(&self) -> &str {
     self.files.get(self.file).unwrap()
   }
@@ -279,20 +281,25 @@ impl Lexer {
     }
   }
 
-  pub fn switch_file(&mut self, filename: &str) {
+  pub fn switch_file(&mut self, filename: &Path) {
     use std::io::Read;
     let mut file = match ::std::fs::File::open(filename) {
       Ok(file) => file,
-      Err(e) =>
-        error_np!("Failed to open input file: `{}'\nError: {}", filename, e),
+      Err(e) => error_np!(
+        "Failed to open input file: `{}'\nError: {}",
+        filename.to_str().unwrap(),
+        e,
+      ),
     };
 
     let mut bytes = Vec::new();
     match file.read_to_end(&mut bytes) {
       Ok(_) => {},
-      Err(e) => error_np!("Failed to read file: `{}'\nError: {}", filename, e),
+      Err(e) => error_np!(
+        "Failed to read file: `{}'\nError: {}", filename.to_str().unwrap(), e,
+      ),
     }
-    let pos = Position::new(filename, self.files.clone());
+    let pos = Position::new(filename.to_str().unwrap(), self.files.clone());
     self.input = bytes;
     self.idx = 0;
     self.pos = pos;
