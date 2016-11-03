@@ -1,4 +1,4 @@
-JI start
+ji start
 
 ; --- System constants ---
 equ OUT 0x200
@@ -6,117 +6,117 @@ equ IN  0x201
 equ SC2 0x4
 
 ; --- BF Constants ---
-equ CURR_CMD 0xF0 ; ptr to currently executing cmd
+equ CURR_Cmd 0xF0 ; ptr to currently executing cmd
 equ DATA_POINTER 0xF1 ; ptr to current data
 
 start:
-    MI CURR_CMD, PROGRAM ; set our current command to PROGRAM
-    MI DATA_POINTER, DATA_REGION ; Data pointer to beginning of data region
+    mi CURR_Cmd, PROGRAM ; set our current command to PROGRAM
+    mi DATA_POINTER, DATA_REGION ; Data pointer to beginning of data region
 
-    DEC CURR_CMD ; back one so inc on first interp loop brings us to beginning
-    JI interp
+    dec CURR_Cmd ; back one so inc on first interp loop brings us to beginning
+    ji interp
 
 interp:
-    INC CURR_CMD
+    inc CURR_Cmd
     ;Debug: print current command
-    ;  MI OUT, 0x43
-    ;  MI OUT, 0x4d
-    ;  MI OUT, 0x44
-    ;  MI OUT, 0x3a
-    ;  MI OUT, 0x20
-    ;  MD OUT, CURR_CMD
-	;  MI OUT, 0x0a
-    MD SC2, CURR_CMD
-    MI SC, 0x3e ; >
-    JQ SC2, SC, inc_ptr
-    MI SC, 0x3c ; <
-    JQ SC2, SC, dec_ptr
-    MI SC, 0x2b ; +
-    JQ SC2, SC, inc_val
-    MI SC, 0x2d ; -
-    JQ SC2, SC, dec_val
-    MI SC, 0x2e ; .
-    JQ SC2, SC, put_val
-    MI SC, 0x2c ; ,
-    JQ SC2, SC, get_val
-    MI SC, 0x5b ; [
-    JQ SC2, SC, beg_loop
-    MI SC, 0x5d ; ]
-    JQ SC2, SC, end_loop
-    MI SC, 0x0 ; NUL terminate str
-    JQ SC2, SC, exit
-    HF ; no matching instruction, fail
+    ;  mi OUT, 0x43
+    ;  mi OUT, 0x4d
+    ;  mi OUT, 0x44
+    ;  mi OUT, 0x3a
+    ;  mi OUT, 0x20
+    ;  md OUT, CURR_Cmd
+	;  mi OUT, 0x0a
+    md SC2, CURR_Cmd
+    mi SC, 0x3e ; >
+    jq SC2, SC, inc_ptr
+    mi SC, 0x3c ; <
+    jq SC2, SC, dec_ptr
+    mi SC, 0x2b ; +
+    jq SC2, SC, inc_val
+    mi SC, 0x2d ; -
+    jq SC2, SC, dec_val
+    mi SC, 0x2e ; .
+    jq SC2, SC, put_val
+    mi SC, 0x2c ; ,
+    jq SC2, SC, get_val
+    mi SC, 0x5b ; [
+    jq SC2, SC, beg_loop
+    mi SC, 0x5d ; ]
+    jq SC2, SC, end_loop
+    mi SC, 0x0 ; NUL terminate str
+    jq SC2, SC, exit
+    hf ; no matching instruction, fail
 
 inc_ptr:
-    INC DATA_POINTER
-    JI interp
+    inc DATA_POINTER
+    ji interp
 
 dec_ptr:
-    DEC DATA_POINTER
-    JI interp
+    dec DATA_POINTER
+    ji interp
 
 inc_val:
-    MD SC2, DATA_POINTER
-    INC SC2
-    ; MI OUT, 0x2d
+    md SC2, DATA_POINTER
+    inc SC2
+    ; mi OUT, 0x2d
     ; MV OUT, SC
-    ; MI OUT, 0x2d
-    ST SC2, DATA_POINTER
-    JI interp
+    ; mi OUT, 0x2d
+    st SC2, DATA_POINTER
+    ji interp
 dec_val:
-    MD SC2, DATA_POINTER
-    DEC SC2
-    ST SC2, DATA_POINTER
-    JI interp
+    md SC2, DATA_POINTER
+    dec SC2
+    st SC2, DATA_POINTER
+    ji interp
 
 put_val:
-    MD OUT, DATA_POINTER
-    JI interp
+    md OUT, DATA_POINTER
+    ji interp
 
 get_val:
-    LD DATA_POINTER, IN
-    JI interp
+    ld DATA_POINTER, IN
+    ji interp
     
 beg_loop:
-    MD SC2, DATA_POINTER
-    MI SC, 0x0
-    JQ SC2, SC, beg_loop__no_enter_loop
-    JI beg_loop__enter_loop
+    md SC2, DATA_POINTER
+    mi SC, 0x0
+    jq SC2, SC, beg_loop__no_enter_loop
+    ji beg_loop__enter_loop
 beg_loop__no_enter_loop: ; we don't need to start looping -- data is 0
     ; eat until ']'
-    MD SC2, CURR_CMD
-    MI SC, 0x5d ; ']'
-    JQ SC, SC2, beg_loop__after
-    INC CURR_CMD
-    JI beg_loop__no_enter_loop
+    md SC2, CURR_Cmd
+    mi SC, 0x5d ; ']'
+    jq SC, SC2, beg_loop__after
+    inc CURR_Cmd
+    ji beg_loop__no_enter_loop
 beg_loop__after:
-    JI interp
+    ji interp
 beg_loop__enter_loop:
     ; Push cmd ptr and enter loop
-    PUSH CURR_CMD
-    JI interp
+    PUSH CURR_Cmd
+    ji interp
 
 end_loop:
-    ; if *DP != 0, POP CURR_CMD, else POP SC
-    MD SC2, DATA_POINTER
-    MI SC, 0x0
-    JQ SC2, SC, end_loop__no_loop
+    ; if *DP != 0, pop CURR_Cmd, else pop SC
+    md SC2, DATA_POINTER
+    mi SC, 0x0
+    jq SC2, SC, end_loop__no_loop
     ; fallthru to end_loop__do_loop
 end_loop__do_loop:
-    POP CURR_CMD
-    DEC CURR_CMD ; back one
-    JI interp
+    pop CURR_Cmd
+    dec CURR_Cmd ; back one
+    ji interp
 end_loop__no_loop:
-    POP SC
-    JI interp
+    pop SC
+    ji interp
 
 exit:
-    MI OUT, 0x42
-    MI OUT, 0x79
-    MI OUT, 0x65
-    MI OUT, 0x21
-    MI OUT, 0x0a
-    HF
+    mi OUT, 0x42
+    mi OUT, 0x79
+    mi OUT, 0x65
+    mi OUT, 0x21
+    mi OUT, 0x0a
+    hf
 
 
 ; --- BF Program to run ---
@@ -124,6 +124,6 @@ PROGRAM:
 data "++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++\
 			++++++++++.>.+++.------.--------.>+.>." 0x0
 
-; currently 256 words -- rep macro would be useful to make this cleaner
+; currently 256 words
 DATA_REGION:
 data rep 256 0x0

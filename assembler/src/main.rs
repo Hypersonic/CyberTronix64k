@@ -1,6 +1,6 @@
 use std::env;
 use std::fs::File;
-use std::io::{Write, Read};
+use std::io::Write;
 use std::fmt::{self, Debug};
 
 #[macro_use]
@@ -12,7 +12,7 @@ mod lexer;
 mod parser;
 
 pub struct Opcode {
-  variant: OpcodeVariant,
+  var: OpcodeVariant,
   reg: u16,
   num: u16,
 }
@@ -40,7 +40,7 @@ pub enum OpcodeVariant {
 impl Debug for Opcode {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     use OpcodeVariant::*;
-    match self.variant {
+    match self.var {
       MoveImmediate => write!(f, "MI {}, {}", self.reg, self.num),
       Move => write!(f, "MV {}, {}", self.reg, self.num),
       MoveDeref => write!(f, "MD {}, {}", self.reg, self.num),
@@ -74,78 +74,49 @@ impl Debug for Opcode {
 struct Program(Vec<Opcode>);
 
 impl Program {
-  fn new(input: Vec<u8>) -> Self {
-    Program(parser::Parser::new(input).collect())
+  fn new(filename: &str) -> Self {
+    Program(parser::Parser::new(filename).collect())
   }
 }
 
 fn main() {
   let args = env::args_os().collect::<Vec<_>>();
   let inpfilename = match args.get(1) {
-    Some(f) => f,
-    None => {
-      error_nln!("usage: {} filename -o output",
-        args
-          .get(0)
-          .map(|own| own.to_string_lossy())
-          .unwrap_or("program".into()),
-      );
-    }
+    Some(f) => match f.to_str() {
+      Some(s) => s,
+      None => error_np!("Filename must be valid utf-8; is {:?}", f),
+    },
+    None => error_np!(
+      "usage: {} filename -o output",
+      args.get(0).map(|own| own.to_string_lossy()).unwrap_or("program".into()),
+    ),
   };
   match args.get(2) {
     Some(s) if s == "-o" => {},
     Some(s) => {
-      error_nln!(
+      error_np!(
         "The second argument *must* be `-o' until I fix argument handling\n\
         (it was {})",
         s.to_string_lossy(),
       );
     }
-    None => {
-      error_nln!("usage: {} filename -o output",
-        args
-          .get(0)
-          .map(|own| own.to_string_lossy())
-          .unwrap_or("program".into()),
-        );
-    }
+    None => error_np!(
+      "usage: {} filename -o output",
+      args.get(0).map(|own| own.to_string_lossy()).unwrap_or("program".into()),
+    ),
   }
   let outfilename = match args.get(3) {
-    Some(f) => f,
-    None => {
-      error_nln!("usage: {} filename -o output",
-        args
-          .get(0)
-          .map(|own| own.to_string_lossy())
-          .unwrap_or("program".into()),
-      );
-    }
+    Some(f) => match f.to_str() {
+      Some(s) => s,
+      None => error_np!("Filename must be valid utf-8; is {:?}", f),
+    },
+    None => error_np!(
+      "usage: {} filename -o output",
+      args.get(0).map(|own| own.to_string_lossy()).unwrap_or("program".into()),
+    ),
   };
 
-  let mut inp = match File::open(inpfilename) {
-    Ok(file) => file,
-    Err(e) => {
-      error_nln!(
-        "Failed to open input file: `{}'\nError: {}",
-        inpfilename.to_string_lossy(),
-        e,
-      );
-    }
-  };
-
-  let mut bytes = Vec::new();
-  match inp.read_to_end(&mut bytes) {
-    Ok(_) => {},
-    Err(e) => {
-      error_nln!(
-        "Failed to read file: `{}'\nError: {}",
-        inpfilename.to_string_lossy(),
-        e,
-      );
-    }
-  }
-
-  let program = Program::new(bytes);
+  let program = Program::new(&inpfilename);
   let mut out = Vec::new();
   for op in program.0 {
     use OpcodeVariant::*;
@@ -162,7 +133,7 @@ fn main() {
       match res {
         Ok(_) => {}
         Err(e) => {
-          error_nln!("Error while writing: {}", e);
+          error_np!("Error while writing: {}", e);
         }
       }
     };
@@ -173,7 +144,7 @@ fn main() {
       write(out, &[(opcode << 12) | reg, mem, label]);
     };
 
-    match op.variant {
+    match op.var {
       MoveImmediate => arith(&mut out, 0x0, op.reg, op.num),
       Move => arith(&mut out, 0x1, op.reg, op.num),
       MoveDeref => arith(&mut out, 0x2, op.reg, op.num),
@@ -193,17 +164,13 @@ fn main() {
       Data(nums) => write(&mut out, &nums),
     }
   }
-  match File::create(outfilename) {
+  match File::create(&outfilename) {
     Ok(mut file) => match file.write_all(&out) {
       Ok(_) => {}
-      Err(e) => error_nln!("Error while writing: {}", e),
+      Err(e) => error_np!("Error while writing: {}", e),
     },
-    Err(e) => {
-      error_nln!(
-        "Failed to open output file: `{}'\nError: {}",
-        outfilename.to_string_lossy(),
-        e,
-      );
-    }
+    Err(e) => error_np!(
+      "Failed to open output file: `{}'\nError: {}", outfilename, e,
+    ),
   };
 }

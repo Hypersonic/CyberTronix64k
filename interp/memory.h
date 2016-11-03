@@ -32,5 +32,5 @@ class memory {
     }
 
     bool must_print;
-    mem_t mem[1<<15] = {0}; // lookups that don't hit mmapped regions hit this
+    mem_t mem[1<<16] = {0}; // lookups that don't hit mmapped regions hit this
 };

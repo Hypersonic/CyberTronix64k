@@ -1,16 +1,6 @@
-EQU STDOUT 0x200
-EQU STDIN 0x201
+import constants
 
-EQU S00 0x40
-EQU S01 0x41
-EQU S02 0x42
-EQU S03 0x43
-EQU S04 0x44
-EQU S05 0x45
-EQU S06 0x46
-EQU S07 0x47
-EQU S08 0x48
-EQU S09 0x49
+global getline
 
 # struct str {
 #	  char* ptr;
