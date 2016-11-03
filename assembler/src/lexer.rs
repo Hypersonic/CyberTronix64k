@@ -4,20 +4,43 @@ use std::rc::Rc;
 use std::fmt::{self, Display};
 
 // index into the file vector
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub struct File(u32);
 #[derive(Clone)]
-pub struct Files {
+pub struct __Files {
   vec: Rc<RefCell<Vec<String>>>,
   hm: Rc<RefCell<HashMap<String, u32>>>,
 }
 
+impl PartialEq for __Files {
+  fn eq(&self, other: &Self) -> bool {
+    &*self.hm as *const RefCell<_> == &*other.hm as *const RefCell<_>
+  }
+}
+impl Eq for __Files {}
+#[derive(Clone, PartialEq, Eq)]
+pub struct Files(Option<__Files>);
+
 impl Files {
+  pub fn new() -> Self {
+    let ret = Files(Some(__Files {
+      vec: Rc::new(RefCell::new(Vec::new())),
+      hm: Rc::new(RefCell::new(HashMap::new())),
+    }));
+    assert!(ret.push("<compiler-defined>") == File(0));
+    ret
+  }
+  pub fn empty() -> Self {
+    Files(None)
+  }
   pub fn get(&self, file: File) -> Option<&str> {
     // the reason this is safe is because the Strings in the vector
     // aren't deallocated until all Files objects are deallocated
+    let this = self.0
+      .as_ref()
+      .expect("ICE: Attempted to get a file from an empty Files");
     unsafe {
-      self.vec
+      this.vec
         .borrow()
         .get(file.0 as usize)
         .map(|x| &*(&**x as *const str))
@@ -25,8 +48,10 @@ impl Files {
   }
 
   pub fn push(&self, s: &str) -> File {
-    let mut hm = self.hm.borrow_mut();
-    let mut vec = self.vec.borrow_mut();
+    let this =
+      self.0.as_ref().expect("ICE: Attempted to push a file to an empty Files");
+    let mut hm = this.hm.borrow_mut();
+    let mut vec = this.vec.borrow_mut();
     match hm.get(s) {
       Some(&f) => File(f),
       None => {
@@ -39,15 +64,50 @@ impl Files {
   }
 }
 
+#[derive(Clone)]
 pub struct Position {
   pub line: usize,
   pub offset: usize,
-  pub file: File,
+  file: File,
   files: Files,
 }
 
+impl Position {
+  // if you don't want any data
+  pub fn empty() -> Self {
+    Position {
+      line: 0,
+      offset: 0,
+      file: File(0),
+      files: Files::empty(),
+    }
+  }
+
+  pub fn file(&self) -> &str {
+    self.files.get(self.file).unwrap()
+  }
+
+  fn new(filename: &str, files: Files) -> Self {
+    let file = files.push(filename);
+    Position {
+      line: 1,
+      offset: 0,
+      file: file,
+      files: files,
+    }
+  }
+
+  fn newline(&mut self) {
+    self.line += 1;
+    self.offset = 0;
+  }
+  fn next(&mut self) {
+    self.offset += 1;
+  }
+}
+
 impl Display for Position {
-  fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     write!(
       f,
       "{}:{}:{}",
@@ -60,19 +120,19 @@ impl Display for Position {
 
 #[derive(Clone)]
 pub struct OpArg {
-  pub variant: OpArgVar,
-  pub position: Position,
+  pub var: OpArgVar,
+  pub pos: Position,
 }
 
 impl OpArg {
   pub fn evaluate(
     &self, labels: &HashMap<String, u16>, mac_args: &[OpArg], inst_offset: u16,
   ) -> u16 {
-    match self.variant {
+    match self.var {
       OpArgVar::Number(n) => n,
       OpArgVar::Label(ref label) => match labels.get(label) {
         Some(&n) => n,
-        None => error!(self.position, "Undefined label: {}", label),
+        None => error!(self.pos, "Undefined label: {}", label),
       },
       OpArgVar::MacroArg(n) =>
         mac_args[n as usize].evaluate(labels, &[], inst_offset),
@@ -116,11 +176,19 @@ pub enum OpArgVar {
   Here, // $
 }
 
+#[derive(Copy, Clone)]
+pub enum Public {
+  Public,
+  Private,
+}
+
 #[derive(Clone)]
 pub enum DirectiveVar {
-  Label(String),
+  Public(String), // TODO(ubsan): useless for now
+  Label(String, Public),
+  Import(Vec<String>, Public),
+  Const(String, OpArg, Public),
   Op(String, Vec<OpArg>),
-  Const(String, OpArg),
   // TODO(ubsan): allow non-constant reps?
   Data(Vec<OpArg>),
   #[allow(dead_code)]
@@ -133,9 +201,8 @@ pub enum DirectiveVar {
 
 #[derive(Clone)]
 pub struct Directive {
-  pub variant: DirectiveVar,
-  pub line: usize,
-  pub offset: usize,
+  pub var: DirectiveVar,
+  pub pos: Position,
 }
 
 enum TokenVar {
@@ -150,260 +217,103 @@ enum TokenVar {
   Rep,
   Macro,
   EndMacro,
+  Import,
+  Public,
   Here, // $
+  Dot,
   Comma,
   Newline,
 }
 
+impl Display for TokenVar {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match *self {
+      TokenVar::Ident(_) => write!(f, "identifier"),
+      TokenVar::Label(_) => write!(f, "label"),
+      TokenVar::Newline => write!(f, "newline"),
+      TokenVar::Comma => write!(f, "comma"),
+      TokenVar::Dot => write!(f, "period"),
+      TokenVar::Here => write!(f, "$"),
+      TokenVar::Equ => write!(f, "equ directive"),
+      TokenVar::Import => write!(f, "import directive"),
+      TokenVar::Public => write!(f, "public directive"),
+      TokenVar::Data => write!(f, "data directive"),
+      TokenVar::Rep => write!(f, "rep directive"),
+      TokenVar::Macro => write!(f, "macro directive"),
+      TokenVar::EndMacro => write!(f, "endmacro directive"),
+      TokenVar::StrLit(_) => write!(f, "string literal"),
+      TokenVar::NumLit(_) => write!(f, "number literal"),
+      TokenVar::MacroLabel(_) => write!(f, "macro label"),
+      TokenVar::MacroArg(_) => write!(f, "macro argument"),
+    }
+  }
+}
+
 struct Token {
-  variant: TokenVar,
+  var: TokenVar,
   pos: Position,
 }
 
 pub struct Lexer {
   input: Vec<u8>,
   idx: usize,
-  line: usize,
-  offset: usize,
+
+  files: Files,
+  pos: Position,
 }
+// UTILITY
 impl Lexer {
-  pub fn new(input: Vec<u8>) -> Self {
-    Lexer {
-      input: input,
-      idx: 0,
-      line: 1,
+  pub fn new() -> Self {
+    let files = Files::new();
+    let pos = Position {
+      line: 0,
       offset: 0,
+      file: File(0),
+      files: files.clone()
+    };
+    Lexer {
+      input: Vec::new(),
+      idx: 0,
+      files: files,
+      pos: pos,
     }
   }
 
-  pub fn next_directive(&mut self) -> Option<Directive> {
-    fn to_string(pos: &Position, v: Vec<u8>) -> String {
-      match String::from_utf8(v) {
-        Ok(s) => s,
-        Err(_) => error!(pos, "Invalid utf8"),
-      }
+  pub fn switch_file(&mut self, filename: &str) {
+    use std::io::Read;
+    let mut file = match ::std::fs::File::open(filename) {
+      Ok(file) => file,
+      Err(e) =>
+        error_np!("Failed to open input file: `{}'\nError: {}", filename, e),
+    };
+
+    let mut bytes = Vec::new();
+    match file.read_to_end(&mut bytes) {
+      Ok(_) => {},
+      Err(e) => error_np!("Failed to read file: `{}'\nError: {}", filename, e),
     }
-    // None means EOL
-    fn get_op_arg(tok: Token) -> Option<OpArg> {
-      match tok.variant {
-        TokenVar::Newline => None,
-        TokenVar::Here => Some(OpArg {
-          variant: OpArgVar::Here,
-          line: tok.line,
-          offset: tok.offset,
-        }),
-        TokenVar::Ident(id) => Some(OpArg {
-          variant: OpArgVar::Label(to_string(tok.line, tok.offset, id)),
-          line: tok.line,
-          offset: tok.offset,
-        }),
-        TokenVar::NumLit(n) => Some(OpArg {
-          variant: OpArgVar::Number(n),
-          line: tok.line,
-          offset: tok.offset,
-        }),
-        TokenVar::StrLit(s) => {
-          if s.len() == 1 {
-            Some(OpArg {
-              variant: OpArgVar::Number(s[0] as u16),
-              line: tok.line,
-              offset: tok.offset,
-            })
-          } else if s.is_empty() {
-            error!(
-              tok.pos, "Unexpected empty string literal",
-            );
-          } else {
-            error!(
-              tok.pos, "Unexpected multi-char string literal",
-            );
-          }
-        }
-        TokenVar::MacroLabel(_) => error!(
-          tok.pos, "Unexpected macro label outside macro context",
-        ),
-        TokenVar::MacroArg(_) => error!(
-          tok.pos, "Unexpected macro argument outside macro context",
-        ),
-        TokenVar::Macro => error!(tok.pos, "Unexpected macro start"),
-        TokenVar::EndMacro => error!(tok.pos, "Unexpected macro end"),
-        TokenVar::Equ => error!(tok.pos, "Unexpected EQU directive"),
-        TokenVar::Rep => error!(
-          tok.line, tok.offset, "Unexpected REP directive",
-        ),
-        TokenVar::Data => error!(
-          tok.line, tok.offset, "Unexpected DATA directive",
-        ),
-        TokenVar::Comma => error!(
-          tok.line, tok.offset, "Unexpected comma",
-        ),
-        TokenVar::Label(_) => error!(
-          tok.line, tok.offset, "Unexpected label",
-        ),
-      }
-    }
-    if let Some(tok) = self.next_token() {
-      match tok.variant {
-        TokenVar::Newline => self.next_directive(),
-        TokenVar::Label(label) => Some(Directive {
-          variant: DirectiveVar::Label(to_string(tok.line, tok.offset, label)),
-          line: tok.line,
-          offset: tok.offset,
-        }),
-        TokenVar::Ident(op) => {
-          let line = tok.line;
-          let offset = tok.offset;
-          let op = to_string(tok.line, tok.offset, op);
-          let mut args = Vec::new();
-          while let Some(tok) = self.next_token() {
-            if let Some(arg) = get_op_arg(tok) {
-              args.push(arg);
-            }
-            if let Some(tok) = self.next_token() {
-              if let TokenVar::Newline = tok.variant {
-                break;
-              } else if let TokenVar::Comma = tok.variant {
-              } else {
-                error!(tok.line, tok.offset, "Expected a comma or a newline");
-              }
-            }
-          }
-          Some(Directive {
-            variant: DirectiveVar::Op(op, args),
-            line: line,
-            offset: offset,
-          })
-        },
-        TokenVar::Data => {
-          let line = tok.line;
-          let offset = tok.offset;
-          let mut data = Vec::new();
-          while let Some(tok) = self.next_token() {
-            match tok.variant {
-              TokenVar::Rep => {
-                let repetitions = match self.next_token() {
-                  Some(tok) => match tok.variant {
-                    TokenVar::NumLit(n) => n,
-                    _ => error!(
-                      tok.line,
-                      tok.offset,
-                      "Expected literal number of repetitions",
-                    ),
-                  },
-                  None => error!(tok.line, tok.offset, "Unexpected EOF"),
-                };
-                match self.next_token() {
-                  Some(tok) => match get_op_arg(tok) {
-                    Some(op) => for _ in 0..repetitions {
-                      data.push(op.clone());
-                    },
-                    None =>
-                      error!(self.line, self.offset, "Unexpected newline"),
-                  },
-                  None => error!(tok.line, tok.offset, "Unexpected EOF"),
-                }
-              }
-              TokenVar::Ident(id) => data.push(OpArg {
-                variant: OpArgVar::Label(to_string(tok.line, tok.offset, id)),
-                line: tok.line,
-                offset: tok.offset,
-              }),
-              TokenVar::StrLit(s) => {
-                let line = tok.line;
-                let offset = tok.offset;
-                data.extend(s.into_iter().map(|c| OpArg {
-                  variant: OpArgVar::Number(c as u16),
-                  line: line,
-                  offset: offset,
-                }))
-              }
-              TokenVar::NumLit(n) => data.push(OpArg {
-                variant: OpArgVar::Number(n),
-                line: tok.line,
-                offset: tok.offset,
-              }),
-              TokenVar::Here => data.push(OpArg {
-                variant: OpArgVar::Here,
-                line: tok.line,
-                offset: tok.offset,
-              }),
-              TokenVar::Newline => break,
-              TokenVar::Comma => error!(tok.line, tok.offset, "Unexpected comma"),
-              TokenVar::Label(_) =>
-                error!(tok.line, tok.offset, "Unexpected label definition"),
-              TokenVar::MacroLabel(_) => error!(
-                tok.line,
-                tok.offset,
-                "Unexpected macro label outside of macro context"
-              ),
-              TokenVar::MacroArg(_) => error!(
-                tok.line,
-                tok.offset,
-                "Unexpected macro argument outside of macro context",
-              ),
-              TokenVar::Data =>
-                error!(tok.line, tok.offset, "Unexpected DATA directive"),
-              TokenVar::Equ =>
-                error!(tok.line, tok.offset, "Unexpected EQU directive"),
-              TokenVar::Macro =>
-                error!(tok.line, tok.offset, "Unexpected MACRO directive"),
-              TokenVar::EndMacro =>
-                error!(tok.line, tok.offset, "Unexpected ENDMACRO directive"),
-            }
-          }
-          Some(Directive {
-            variant: DirectiveVar::Data(data),
-            line: line,
-            offset: offset,
-          })
-        }
-        TokenVar::Equ => {
-          let line = tok.line;
-          let offset = tok.offset;
-          let name = if let Some(tok) = self.next_token() {
-            match tok.variant {
-              TokenVar::Ident(s) => to_string(tok.line, tok.offset, s),
-              _ => error!(
-                tok.line, tok.offset, "Expected identifier for EQU directive",
-              ),
-            }
-          } else {
-              error!(tok.line, tok.offset, "Unexpected EOF")
-          };
-          let constant = if let Some(tok) = self.next_token() {
-            match get_op_arg(tok) {
-              Some(op) => op,
-              None => error!(self.line, self.offset, "Unexpected newline"),
-            }
-          } else {
-            error!(tok.line, tok.offset, "Unexpected EOF")
-          };
-          Some(Directive {
-            variant: DirectiveVar::Const(name, constant),
-            line: line,
-            offset: offset,
-          })
-        }
-        TokenVar::Rep =>
-          error!(tok.line, tok.offset, "Unexpected REP directive"),
-        TokenVar::Comma => error!(tok.line, tok.offset, "Unexpected comma"),
-        TokenVar::Here => error!(tok.line, tok.offset, "Unexpected $"),
-        TokenVar::StrLit(_) =>
-          error!(tok.line, tok.offset, "Unexpected string literal"),
-        TokenVar::NumLit(_) =>
-          error!(tok.line, tok.offset, "Unexpected number literal"),
-        TokenVar::MacroLabel(_) =>
-          error!(tok.line, tok.offset, "Unexpected macro label"),
-        TokenVar::MacroArg(_) =>
-          error!(tok.line, tok.offset, "Unexpected macro argument"),
-        TokenVar::Macro | TokenVar::EndMacro =>
-          error!(tok.line, tok.offset, "Macros are not yet implemented"),
-      }
-    } else {
-      None
+    let pos = Position::new(filename, self.files.clone());
+    self.input = bytes;
+    self.idx = 0;
+    self.pos = pos;
+  }
+
+  pub fn compiler_defined_pos(&self) -> Position {
+    Position {
+      line: 0,
+      offset: 0,
+      file: File(0),
+      files: self.files.clone()
     }
   }
 
+  fn pos(&self) -> Position {
+    self.pos.clone()
+  }
+}
+
+// TOKENIZATION
+impl Lexer {
   fn peek_char(&self) -> Option<u8> {
     self.input.get(self.idx).cloned()
   }
@@ -413,10 +323,9 @@ impl Lexer {
       Some(c) => {
         self.idx += 1;
         if c == b'\n' {
-          self.offset = 0;
-          self.line += 1;
+          self.pos.newline();
         } else {
-          self.offset += 1;
+          self.pos.next();
         }
         Some(c)
       }
@@ -440,19 +349,12 @@ impl Lexer {
     fn is_ident(c: u8) -> bool {
       is_ident_start(c) || is_num(c)
     }
-    fn to_upper(c: u8) -> u8 {
-      if c >= b'a' && c <= b'z' {
-        c - (b'a' - b'A')
-      } else {
-        c
-      }
-    }
     fn is_allowed(c: u8, base: u16) -> bool {
       match base {
         2 => c >= b'0' && c < b'2',
         8 => c >= b'0' && c < b'8',
         10 => is_num(c),
-        16 => is_num(c) || (c >= b'A' && c <= b'F'),
+        16 => is_num(c) || (c >= b'A' && c <= b'F') || (c >= b'a' && c <= b'f'),
         _ => unreachable!(),
       }
     }
@@ -463,9 +365,9 @@ impl Lexer {
         if let Some(b'\n') = ch {
           self.next_token()
         } else if let Some(ch) = ch {
-          error!(self.line, self.offset, "Unexpected `{}' ({})", ch as char, ch)
+          error!(self.pos, "Unexpected `{}' ({})", ch as char, ch)
         } else {
-          error!(self.line, self.offset, "Unexpected EOF")
+          error!(self.pos, "Unexpected EOF")
         }
       }
       Some(ch) if ch == b'#' || ch == b';' => {
@@ -483,23 +385,19 @@ impl Lexer {
         self.next_token()
       }
       Some(b'\n') => Some(Token {
-        variant: TokenVar::Newline,
-        line: self.line,
-        offset: self.offset,
+        var: TokenVar::Newline,
+        pos: self.pos(),
       }),
       Some(b',') => Some(Token {
-        variant: TokenVar::Comma,
-        line: self.line,
-        offset: self.offset,
+        var: TokenVar::Comma,
+        pos: self.pos(),
       }),
       Some(b'$') => Some(Token {
-        variant: TokenVar::Here,
-        line: self.line,
-        offset: self.offset,
+        var: TokenVar::Here,
+        pos: self.pos(),
       }),
       Some(quote) if quote == b'\'' || quote == b'"' => {
-        let line = self.line;
-        let offset = self.offset;
+        let pos = self.pos();
         let mut buff = Vec::new();
         while let Some(ch) = self.get_char() {
           if ch == b'\\' {
@@ -515,18 +413,15 @@ impl Lexer {
                       break;
                     }
                   } else {
-                    error!(self.line, self.offset, "Unexpected EOF")
+                    error!(self.pos, "Unexpected EOF")
                   }
                 }
               },
               Some(b'n') => buff.push(b'\n'),
               Some(ch) => error!(
-                self.line,
-                self.offset,
-                "Unrecogized escape sequence: \\{}",
-                ch
+                self.pos, "Unrecogized escape sequence: \\{}", ch,
               ),
-              None => error!(self.line, self.offset, "Unexpected EOF"),
+              None => error!(self.pos, "Unexpected EOF"),
             }
           } else if ch == quote {
             break;
@@ -535,87 +430,81 @@ impl Lexer {
           }
         }
         Some(Token {
-          variant: TokenVar::StrLit(buff),
-          line: line,
-          offset: offset,
+          var: TokenVar::StrLit(buff),
+          pos: pos,
         })
       }
       Some(ch) if is_ident_start(ch) => {
-        let line = self.line;
-        let offset = self.offset;
+        let pos = self.pos();
         let mut ret = Vec::new();
-        ret.push(to_upper(ch));
+        ret.push(ch);
         while let Some(c) = self.peek_char() {
           if is_ident(c) {
             self.get_char();
-            ret.push(to_upper(c));
+            ret.push(c);
           } else if c == b':' {
             self.get_char();
             return Some(Token {
-              variant: TokenVar::Label(ret),
-              line: line,
-              offset: offset,
+              var: TokenVar::Label(ret),
+              pos: pos,
             });
           } else {
             break;
           }
         }
         Some(Token {
-          variant: {
-            if ret == b"DATA" {
+          var: {
+            if ret == b"data" {
               TokenVar::Data
-            } else if ret == b"EQU" {
+            } else if ret == b"equ" {
               TokenVar::Equ
-            } else if ret == b"REP" {
+            } else if ret == b"rep" {
               TokenVar::Rep
-            } else if ret == b"MACRO" {
+            } else if ret == b"macro" {
               TokenVar::Macro
-            } else if ret == b"ENDMACRO" {
+            } else if ret == b"endmacro" {
               TokenVar::EndMacro
+            } else if ret == b"import" {
+              TokenVar::Import
+            } else if ret == b"public" {
+              TokenVar::Public
             } else {
               TokenVar::Ident(ret)
             }
           },
-          line: line,
-          offset: offset,
+          pos: pos,
         })
       }
       Some(ch) if is_num(ch) => {
-        let line = self.line;
-        let offset = self.offset;
+        let pos = self.pos();
         let mut base = 10;
         let mut ret = Vec::new();
         if ch == b'0' {
-          match self.peek_char().map(to_upper) {
-            Some(b'B') => base = 2,
-            Some(b'O') => base = 8,
-            Some(b'D') => base = 10,
-            Some(b'X') => base = 16,
+          match self.peek_char() {
+            Some(b'b') => base = 2,
+            Some(b'o') => base = 8,
+            Some(b'd') => base = 10,
+            Some(b'x') => base = 16,
             Some(ch) if is_num(ch) => ret.push(ch),
-            Some(ch) if is_alpha(ch) => error!(
-              self.line,
-              self.offset,
-              "Unsupported character in a base-{} literal: {}",
-              base,
-              ch as char,
-            ),
+            Some(ch) if is_alpha(ch) =>
+              error!(self.pos, "Unknown base specifier: {}", ch as char),
             Some(_) | None => return Some(Token {
-              variant: TokenVar::NumLit(0),
-              line: line,
-              offset: offset,
+              var: TokenVar::NumLit(0),
+              pos: pos,
             })
           }
           self.get_char();
+        } else {
+          ret.push(ch);
         }
 
-        while let Some(ch) = self.peek_char().map(to_upper) {
+        while let Some(ch) = self.peek_char() {
           if is_allowed(ch, base) {
             self.get_char();
             ret.push(ch);
           } else if is_alpha(ch) {
             error!(
-              self.line,
-              self.offset,
+              self.pos,
               "Unsupported character in a base-{} literal: {}",
               base,
               ch as char,
@@ -629,56 +518,286 @@ impl Lexer {
           match acc.checked_mul(base).and_then(|a| a.checked_add(add as u16)) {
             Some(a) => a,
             None => error!(
-              self.line,
-              self.offset,
+              pos,
               "Attempted to write an overflowing number literal: {}",
               ::std::str::from_utf8(&ret).unwrap(),
             ),
           }
         });
         Some(Token {
-          variant: TokenVar::NumLit(ret),
-          line: line,
-          offset: offset,
+          var: TokenVar::NumLit(ret),
+          pos: pos,
         })
       }
       Some(b'%') => {
-        let line = self.line;
-        let offset = self.offset;
+        let pos = self.pos();
         if let Some(next_tok) = self.next_token() {
-          if let TokenVar::NumLit(n) = next_tok.variant {
+          if let TokenVar::NumLit(n) = next_tok.var {
             Some(Token {
-              variant: TokenVar::MacroArg(n),
-              line: line,
-              offset: offset,
+              var: TokenVar::MacroArg(n),
+              pos: self.pos(),
             })
-          } else if let TokenVar::Label(label) = next_tok.variant {
+          } else if let TokenVar::Label(label) = next_tok.var {
             Some(Token {
-              variant: TokenVar::MacroLabel(label),
-              line: line,
-              offset: offset,
+              var: TokenVar::MacroLabel(label),
+              pos: pos,
             })
-          } else if let TokenVar::Ident(_) = next_tok.variant {
-            error!(self.line, self.offset, "Expected a colon");
+          } else if let TokenVar::Ident(_) = next_tok.var {
+            error!(self.pos, "Expected a colon");
           } else {
-            error!(
-              next_tok.line,
-              next_tok.offset,
-              "Expected a label or number"
-            );
+            error!(next_tok.pos, "Expected a label or number");
           }
         } else {
-          error!(self.line, self.offset, "Unexpected EOF");
+          error!(self.pos, "Unexpected EOF");
         }
       }
+      Some(b'.') => Some(Token { var: TokenVar::Dot, pos: self.pos() }),
       Some(ch) => error!(
-        self.line,
-        self.offset,
-        "Unsupported character: `{}' ({})",
-        ch as char,
-        ch
+        self.pos, "Unsupported character: `{}' (0x{:X})", ch as char, ch,
       ),
       None => None,
+    }
+  }
+}
+
+// LEXING
+impl Lexer {
+  fn to_string(pos: &Position, v: Vec<u8>) -> String {
+    match String::from_utf8(v) {
+      Ok(s) => s,
+      Err(_) => error!(pos, "Invalid utf8"),
+    }
+  }
+
+  // None means EOL
+  fn get_op_arg(tok: Token) -> Option<OpArg> {
+    match tok.var {
+      TokenVar::Newline => None,
+      TokenVar::Here => Some(OpArg {
+        var: OpArgVar::Here,
+        pos: tok.pos,
+      }),
+      TokenVar::Ident(id) => Some(OpArg {
+        var: OpArgVar::Label(Self::to_string(&tok.pos, id)),
+        pos: tok.pos,
+      }),
+      TokenVar::NumLit(n) => Some(OpArg {
+        var: OpArgVar::Number(n),
+        pos: tok.pos,
+      }),
+      TokenVar::StrLit(s) => {
+        if s.len() == 1 {
+          Some(OpArg {
+            var: OpArgVar::Number(s[0] as u16),
+            pos: tok.pos
+          })
+        } else if s.is_empty() {
+          error!(
+            tok.pos, "Unexpected empty string literal",
+          );
+        } else {
+          error!(
+            tok.pos, "Unexpected multi-char string literal",
+          );
+        }
+      }
+      tv => error!(tok.pos, "Unexpected {}", tv),
+    }
+  }
+
+  fn dir_label(&mut self, pos: Position, label: Vec<u8>) -> Directive {
+    Directive {
+      var: DirectiveVar::Label(
+        Self::to_string(&pos, label), Public::Private,
+      ),
+      pos: pos,
+    }
+  }
+
+  fn dir_ident(&mut self, pos: Position, op: Vec<u8>) -> Directive {
+    let op = Self::to_string(&pos, op);
+    let mut args = Vec::new();
+    while let Some(tok) = self.next_token() {
+      if let Some(arg) = Self::get_op_arg(tok) {
+        args.push(arg);
+      }
+      if let Some(tok) = self.next_token() {
+        if let TokenVar::Newline = tok.var {
+          break;
+        } else if let TokenVar::Comma = tok.var {
+        } else {
+          error!(tok.pos, "Expected a comma or a newline");
+        }
+      }
+    }
+    Directive {
+      var: DirectiveVar::Op(op, args),
+      pos: pos,
+    }
+  }
+
+  fn dir_data(&mut self, pos: Position) -> Directive {
+    let mut data = Vec::new();
+    while let Some(tok) = self.next_token() {
+      match tok.var {
+        TokenVar::Rep => {
+          let repetitions = match self.next_token() {
+            Some(tok) => match tok.var {
+              TokenVar::NumLit(n) => n,
+              _ => error!(
+                tok.pos, "Expected literal number of repetitions",
+              ),
+            },
+            None => error!(tok.pos, "Unexpected EOF"),
+          };
+          match self.next_token() {
+            Some(tok) => match Self::get_op_arg(tok) {
+              Some(op) => for _ in 0..repetitions {
+                data.push(op.clone());
+              },
+              None => error!(self.pos, "Unexpected newline"),
+            },
+            None => error!(self.pos, "Unexpected EOF"),
+          }
+        }
+        TokenVar::Ident(id) => data.push(OpArg {
+          var: OpArgVar::Label(Self::to_string(&tok.pos, id)),
+          pos: tok.pos,
+        }),
+        TokenVar::StrLit(s) => {
+          let pos = tok.pos;
+          data.extend(s.into_iter().map(|c| OpArg {
+            var: OpArgVar::Number(c as u16),
+            pos: pos.clone(),
+          }))
+        }
+        TokenVar::NumLit(n) => data.push(OpArg {
+          var: OpArgVar::Number(n),
+          pos: tok.pos,
+        }),
+        TokenVar::Here => data.push(OpArg {
+          var: OpArgVar::Here,
+          pos: tok.pos,
+        }),
+        TokenVar::Newline => break,
+        tv => error!(tok.pos, "Unexpected {}", tv),
+      }
+    }
+    Directive {
+      var: DirectiveVar::Data(data),
+      pos: pos,
+    }
+  }
+
+  fn dir_public(&mut self, pos: Position) -> Directive {
+    if let Some(tok) = self.next_token() {
+      match tok.var {
+        TokenVar::Label(label) => {
+          let mut ret = self.dir_label(tok.pos, label);
+          if let DirectiveVar::Label(_, ref mut public) = ret.var {
+            *public = Public::Public;
+          } else { panic!("ICE: dir_label didn't return a label"); }
+          ret
+        },
+        TokenVar::Ident(op) => Directive {
+          var: DirectiveVar::Public(Self::to_string(&pos, op)),
+          pos: pos,
+        },
+        TokenVar::Import => {
+          let mut ret = self.dir_import(tok.pos);
+          if let DirectiveVar::Import(_, ref mut public) = ret.var {
+            *public = Public::Public;
+          } else { panic!("ICE: dir_import didn't return an import"); }
+          ret
+        },
+        TokenVar::Equ => {
+          let mut ret = self.dir_equ(tok.pos);
+          if let DirectiveVar::Const(_, _, ref mut public) = ret.var {
+            *public = Public::Public;
+          } else { panic!("ICE: dir_equ didn't return an equ"); }
+          ret
+        },
+        tv => error!(tok.pos, "Unexpected {}", tv),
+      }
+    } else {
+      error!(self.pos, "Unexpected EOF");
+    }
+  }
+
+  fn dir_import(&mut self, pos: Position) -> Directive {
+    if let Some(mut tok) = self.next_token() {
+      let mut parts = Vec::new();
+      loop {
+        match tok.var {
+          TokenVar::Ident(s) => parts.push(Self::to_string(&tok.pos, s)),
+          tv => error!(tok.pos, "Unexpected {}", tv),
+        }
+        if let Some(tok) = self.next_token() {
+          match tok.var {
+            TokenVar::Dot => {},
+            TokenVar::Newline => return Directive {
+              var: DirectiveVar::Import(parts, Public::Private),
+              pos: pos,
+            },
+            tv => error!(tok.pos, "Unexpected {}", tv),
+          }
+        } else {
+          return Directive {
+            var: DirectiveVar::Import(parts, Public::Private),
+            pos: pos,
+          };
+        }
+        if let Some(new_tok) = self.next_token() {
+          tok = new_tok;
+        } else {
+          error!(self.pos, "Unexpected EOF");
+        }
+      }
+    } else {
+      error!(self.pos, "Unexpected EOF");
+    }
+  }
+
+  fn dir_equ(&mut self, pos: Position) -> Directive {
+    let name = if let Some(tok) = self.next_token() {
+      match tok.var {
+        TokenVar::Ident(s) => Self::to_string(&pos, s),
+        _ => error!(tok.pos, "Expected identifier for equ directive"),
+      }
+    } else {
+      error!(pos, "Unexpected EOF")
+    };
+    let constant = if let Some(tok) = self.next_token() {
+      let pos = tok.pos.clone();
+      match Self::get_op_arg(tok) {
+        Some(op) => op,
+        None => error!(pos, "Unexpected newline"),
+      }
+    } else {
+      error!(self.pos, "Unexpected EOF")
+    };
+    Directive {
+      var: DirectiveVar::Const(name, constant, Public::Private),
+      pos: pos,
+    }
+  }
+
+  pub fn next_directive(&mut self) -> Option<Directive> {
+    if let Some(tok) = self.next_token() {
+      Some(match tok.var {
+        TokenVar::Newline => return self.next_directive(),
+        TokenVar::Label(label) => self.dir_label(tok.pos, label),
+        TokenVar::Ident(op) => self.dir_ident(tok.pos, op),
+        TokenVar::Data => self.dir_data(tok.pos),
+        TokenVar::Public => self.dir_public(tok.pos),
+        TokenVar::Import => self.dir_import(tok.pos),
+        TokenVar::Equ => self.dir_equ(tok.pos),
+        TokenVar::Macro | TokenVar::EndMacro =>
+          error!(tok.pos, "Macros are not yet implemented"),
+        tv => error!(tok.pos, "Unexpected {}", tv),
+      })
+    } else {
+      None
     }
   }
 }

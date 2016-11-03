@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use {Opcode, OpcodeVariant};
 
-use lexer::{self, Directive, DirectiveVar, Lexer, OpArg, OpArgVar};
+use lexer::{
+  self, Directive, DirectiveVar, Lexer, OpArg, OpArgVar, Position, Public,
+};
 
 const INST_OFFSET_BASE: u16 = 0x1000;
 
@@ -42,254 +44,341 @@ pub struct Parser {
 }
 
 impl Parser {
-  pub fn new(input: Vec<u8>) -> Self {
+  pub fn new(filename: &str) -> Self {
+    // compiler_defined_pos
     macro_rules! macro_op_arg {
-      ($var:ident) => (
+      ($lexer:expr, $var:ident) => (
         OpArg {
-          variant: OpArgVar::$var,
-          line: 0,
-          offset: 0,
+          var: OpArgVar::$var,
+          pos: $lexer.compiler_defined_pos(),
         }
       );
-      ($var:ident ($($arg:tt)*)) => (
+      ($lexer:expr, $var:ident ($($arg:tt)*)) => (
         OpArg {
-          variant: OpArgVar::$var($($arg)*),
-          line: 0,
-          offset: 0,
+          var: OpArgVar::$var($($arg)*),
+          pos: $lexer.compiler_defined_pos(),
         }
       );
     }
-    let mut lexer = Lexer::new(input);
+    let mut lexer = Lexer::new();
     let mut this = Parser {
       op_buffer: Vec::new(),
       op_buffer_idx: 0,
       inst_offset: INST_OFFSET_BASE,
       directives: Vec::new(),
       labels: hashmap! {
-        "IP".to_owned() => REG_IP,
-        "SP".to_owned() => REG_SP,
-        "BP".to_owned() => REG_BP,
-        "SC".to_owned() => REG_SC,
+        "ip".to_owned() => REG_IP,
+        "sp".to_owned() => REG_SP,
+        "bp".to_owned() => REG_BP,
+        "sc".to_owned() => REG_SC,
       },
       macros: hashmap! {
-        "MI".to_owned() => (2, vec![
+        "mi".to_owned() => (2, vec![
           (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(1)),
+            macro_op_arg!(lexer, MacroArg(0)),
+            macro_op_arg!(lexer, MacroArg(1)),
           ])
         ]),
-        "MV".to_owned() => (2, vec![
+        "mv".to_owned() => (2, vec![
           (BaseOp::Move, vec![
-            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(1))
+            macro_op_arg!(lexer, MacroArg(0)),
+            macro_op_arg!(lexer, MacroArg(1))
           ])
         ]),
-        "MD".to_owned() => (2, vec![
+        "md".to_owned() => (2, vec![
           (BaseOp::MoveDeref, vec![
-            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(1)),
+            macro_op_arg!(lexer, MacroArg(0)),
+            macro_op_arg!(lexer, MacroArg(1)),
           ])
         ]),
-        "LD".to_owned() => (2, vec![
+        "ld".to_owned() => (2, vec![
           (BaseOp::Load, vec![
-            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(1))
+            macro_op_arg!(lexer, MacroArg(0)),
+            macro_op_arg!(lexer, MacroArg(1)),
           ])
         ]),
-        "ST".to_owned() => (2, vec![
+        "st".to_owned() => (2, vec![
           (BaseOp::Store, vec![
-            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(1)),
+            macro_op_arg!(lexer, MacroArg(0)),
+            macro_op_arg!(lexer, MacroArg(1)),
           ])
         ]),
-        "AD".to_owned() => (2, vec![
+        "ad".to_owned() => (2, vec![
           (BaseOp::Add, vec![
-            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(1)),
+            macro_op_arg!(lexer, MacroArg(0)),
+            macro_op_arg!(lexer, MacroArg(1)),
           ])
         ]),
-        "SB".to_owned() => (2, vec![
+        "sb".to_owned() => (2, vec![
           (BaseOp::Sub, vec![
-            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(1)),
+            macro_op_arg!(lexer, MacroArg(0)),
+            macro_op_arg!(lexer, MacroArg(1)),
           ])
         ]),
-        "ND".to_owned() => (2, vec![
+        "nd".to_owned() => (2, vec![
           (BaseOp::And, vec![
-            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(1)),
+            macro_op_arg!(lexer, MacroArg(0)),
+            macro_op_arg!(lexer, MacroArg(1)),
           ])
         ]),
-        "OR".to_owned() => (2, vec![
+        "or".to_owned() => (2, vec![
           (BaseOp::Or, vec![
-            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(1)),
+            macro_op_arg!(lexer, MacroArg(0)),
+            macro_op_arg!(lexer, MacroArg(1)),
           ])
         ]),
-        "XR".to_owned() => (2, vec![
+        "xr".to_owned() => (2, vec![
           (BaseOp::Xor, vec![
-            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(1)),
+            macro_op_arg!(lexer, MacroArg(0)),
+            macro_op_arg!(lexer, MacroArg(1)),
           ])
         ]),
-        "SR".to_owned() => (2, vec![
+        "sr".to_owned() => (2, vec![
           (BaseOp::ShiftRight, vec![
-            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(1)),
+            macro_op_arg!(lexer, MacroArg(0)),
+            macro_op_arg!(lexer, MacroArg(1)),
           ])
         ]),
-        "SL".to_owned() => (2, vec![
+        "sl".to_owned() => (2, vec![
           (BaseOp::ShiftLeft, vec![
-            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(1)),
+            macro_op_arg!(lexer, MacroArg(0)),
+            macro_op_arg!(lexer, MacroArg(1)),
           ])
         ]),
-        "SA".to_owned() => (2, vec![
+        "sa".to_owned() => (2, vec![
           (BaseOp::ShiftArithmetic, vec![
-            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(1)),
+            macro_op_arg!(lexer, MacroArg(0)),
+            macro_op_arg!(lexer, MacroArg(1)),
           ])
         ]),
-        "JG".to_owned() => (3, vec![
+        "jg".to_owned() => (3, vec![
           (BaseOp::JumpGreater, vec![
-            macro_op_arg!(MacroArg(0)),
-            macro_op_arg!(MacroArg(1)),
-            macro_op_arg!(MacroArg(2)),
+            macro_op_arg!(lexer, MacroArg(0)),
+            macro_op_arg!(lexer, MacroArg(1)),
+            macro_op_arg!(lexer, MacroArg(2)),
           ])
         ]),
-        "JL".to_owned() => (3, vec![
+        "jl".to_owned() => (3, vec![
           (BaseOp::JumpLesser, vec![
-            macro_op_arg!(MacroArg(0)),
-            macro_op_arg!(MacroArg(1)),
-            macro_op_arg!(MacroArg(2)),
+            macro_op_arg!(lexer, MacroArg(0)),
+            macro_op_arg!(lexer, MacroArg(1)),
+            macro_op_arg!(lexer, MacroArg(2)),
           ])
         ]),
-        "JQ".to_owned() => (3, vec![
+        "jq".to_owned() => (3, vec![
           (BaseOp::JumpEqual, vec![
-            macro_op_arg!(MacroArg(0)),
-            macro_op_arg!(MacroArg(1)),
-            macro_op_arg!(MacroArg(2)),
+            macro_op_arg!(lexer, MacroArg(0)),
+            macro_op_arg!(lexer, MacroArg(1)),
+            macro_op_arg!(lexer, MacroArg(2)),
           ])
         ]),
-        "HF".to_owned() => (0, vec![
+        "hf".to_owned() => (0, vec![
           (BaseOp::JumpEqual, vec![
-            macro_op_arg!(Number(REG_IP)),
-            macro_op_arg!(Number(REG_IP)),
-            macro_op_arg!(Here),
+            macro_op_arg!(lexer, Number(REG_IP)),
+            macro_op_arg!(lexer, Number(REG_IP)),
+            macro_op_arg!(lexer, Here),
           ]),
         ]),
-        "JM".to_owned() => (1, vec![
+        "jm".to_owned() => (1, vec![
           (BaseOp::Move, vec![
-            macro_op_arg!(Number(REG_IP)), macro_op_arg!(MacroArg(0))]),
+            macro_op_arg!(lexer, Number(REG_IP)),
+            macro_op_arg!(lexer, MacroArg(0)),
+          ]),
         ]),
-        "JI".to_owned() => (1, vec![
+        "ji".to_owned() => (1, vec![
           (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(Number(REG_IP)), macro_op_arg!(MacroArg(0))]),
+            macro_op_arg!(lexer, Number(REG_IP)),
+            macro_op_arg!(lexer, MacroArg(0))
+          ]),
         ]),
-        "INC".to_owned() => (1, vec![
+        "inc".to_owned() => (1, vec![
           (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(Number(REG_SC)), macro_op_arg!(Number(1))]),
+            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, Number(1))
+          ]),
           (BaseOp::Add, vec![
-            macro_op_arg!(MacroArg(0)), macro_op_arg!(Number(REG_SC))]),
+            macro_op_arg!(lexer, MacroArg(0)),
+            macro_op_arg!(lexer, Number(REG_SC)),
+          ]),
         ]),
-        "DEC".to_owned() => (1, vec![
+        "dec".to_owned() => (1, vec![
           (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(Number(REG_SC)), macro_op_arg!(Number(1))]),
+            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, Number(1)),
+          ]),
           (BaseOp::Sub, vec![
-            macro_op_arg!(MacroArg(0)), macro_op_arg!(Number(REG_SC))]),
+            macro_op_arg!(lexer, MacroArg(0)),
+            macro_op_arg!(lexer, Number(REG_SC)),
+          ]),
         ]),
-        "NEG".to_owned() => (1, vec![
+        "neg".to_owned() => (1, vec![
           (BaseOp::Move, vec![
-            macro_op_arg!(Number(REG_SC)), macro_op_arg!(MacroArg(0))]),
+            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, MacroArg(0)),
+          ]),
           (BaseOp::Xor, vec![
-            macro_op_arg!(MacroArg(0)), macro_op_arg!(MacroArg(0))]),
+            macro_op_arg!(lexer, MacroArg(0)),
+            macro_op_arg!(lexer, MacroArg(0)),
+          ]),
           (BaseOp::Move, vec![
-            macro_op_arg!(MacroArg(0)), macro_op_arg!(Number(REG_SC))]),
+            macro_op_arg!(lexer, MacroArg(0)),
+            macro_op_arg!(lexer, Number(REG_SC)),
+          ]),
         ]),
-        "ADI".to_owned() => (2, vec![
+        "adi".to_owned() => (2, vec![
           (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(Number(REG_SC)), macro_op_arg!(MacroArg(1))]),
-          (BaseOp::Add, vec![
-            macro_op_arg!(MacroArg(0)), macro_op_arg!(Number(REG_SC))]),
-        ]),
-        "SBI".to_owned() => (2, vec![
-          (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(Number(REG_SC)), macro_op_arg!(MacroArg(1))]),
-          (BaseOp::Sub, vec![
-            macro_op_arg!(MacroArg(0)), macro_op_arg!(Number(REG_SC))]),
-        ]),
-        "PUSH".to_owned() => (1, vec![
-          (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(Number(REG_SC)), macro_op_arg!(Number(1))
+            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, MacroArg(1)),
           ]),
           (BaseOp::Add, vec![
-            macro_op_arg!(Number(REG_SP)), macro_op_arg!(Number(REG_SC))
+            macro_op_arg!(lexer, MacroArg(0)),
+            macro_op_arg!(lexer, Number(REG_SC)),
+          ]),
+        ]),
+        "sbi".to_owned() => (2, vec![
+          (BaseOp::MoveImmediate, vec![
+            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, MacroArg(1)),
+          ]),
+          (BaseOp::Sub, vec![
+            macro_op_arg!(lexer, MacroArg(0)),
+            macro_op_arg!(lexer, Number(REG_SC)),
+          ]),
+        ]),
+        "push".to_owned() => (1, vec![
+          (BaseOp::MoveImmediate, vec![
+            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, Number(1)),
+          ]),
+          (BaseOp::Add, vec![
+            macro_op_arg!(lexer, Number(REG_SP)),
+            macro_op_arg!(lexer, Number(REG_SC)),
           ]),
           (BaseOp::Load, vec![
-            macro_op_arg!(Number(REG_SP)), macro_op_arg!(MacroArg(0))
+            macro_op_arg!(lexer, Number(REG_SP)),
+            macro_op_arg!(lexer, MacroArg(0)),
           ]),
         ]),
-        "POP".to_owned() => (1, vec![
+        "pop".to_owned() => (1, vec![
           (BaseOp::MoveDeref, vec![
-            macro_op_arg!(MacroArg(0)), macro_op_arg!(Number(REG_SP))
+            macro_op_arg!(lexer, MacroArg(0)),
+            macro_op_arg!(lexer, Number(REG_SP)),
           ]),
           (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(Number(REG_SC)), macro_op_arg!(Number(1))
+            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, Number(1)),
           ]),
           (BaseOp::Sub, vec![
-            macro_op_arg!(Number(REG_SP)), macro_op_arg!(Number(REG_SC))
+            macro_op_arg!(lexer, Number(REG_SP)),
+            macro_op_arg!(lexer, Number(REG_SC)),
           ]),
         ]),
-        "CALL".to_owned() => (1, vec![
+        "call".to_owned() => (1, vec![
           (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(Number(REG_SC)), macro_op_arg!(Number(1))
+            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, Number(1)),
           ]),
           (BaseOp::Add, vec![
-            macro_op_arg!(Number(REG_SP)), macro_op_arg!(Number(REG_SC))
+            macro_op_arg!(lexer, Number(REG_SP)),
+            macro_op_arg!(lexer, Number(REG_SC)),
           ]),
           (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(Number(REG_SC)),
-            macro_op_arg!(ArithOp(
+            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, ArithOp(
               lexer::ArithOp::Add,
-              Box::new(macro_op_arg!(Here)),
-              Box::new(macro_op_arg!(Number(6))),
-            ))
+              Box::new(macro_op_arg!(lexer, Here)),
+              Box::new(macro_op_arg!(lexer, Number(6))),
+            )),
           ]),
           (BaseOp::Load, vec![
-            macro_op_arg!(Number(REG_SP)), macro_op_arg!(Number(REG_SC))
+            macro_op_arg!(lexer, Number(REG_SP)),
+            macro_op_arg!(lexer, Number(REG_SC)),
           ]),
           (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(Number(REG_IP)), macro_op_arg!(MacroArg(0))
+            macro_op_arg!(lexer, Number(REG_IP)),
+            macro_op_arg!(lexer, MacroArg(0)),
           ])
         ]),
-        "RET".to_owned() => (0, vec![
+        "ret".to_owned() => (0, vec![
           (BaseOp::MoveDeref, vec![
-            macro_op_arg!(Number(REG_SC2)), macro_op_arg!(Number(REG_SP))
+            macro_op_arg!(lexer, Number(REG_SC2)),
+            macro_op_arg!(lexer, Number(REG_SP)),
           ]),
           (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(Number(REG_SC)), macro_op_arg!(Number(1))
+            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, Number(1)),
           ]),
           (BaseOp::Sub, vec![
-            macro_op_arg!(Number(REG_SP)), macro_op_arg!(Number(REG_SC))
+            macro_op_arg!(lexer, Number(REG_SP)),
+            macro_op_arg!(lexer, Number(REG_SC)),
           ]),
           (BaseOp::Move, vec![
-            macro_op_arg!(Number(REG_IP)), macro_op_arg!(Number(REG_SC2))
+            macro_op_arg!(lexer, Number(REG_IP)),
+            macro_op_arg!(lexer, Number(REG_SC2)),
           ])
         ]),
       },
       idx: 0,
     };
 
-    while let Some(dir) = lexer.next_directive() {
-      this.directives.push(dir);
+    {
+      fn make_path(pos: &Position, vec: Vec<String>) -> String {
+        use std::path::Path;
+        assert!(!vec.is_empty(), "ICE: DirectiveVar::Import had an empty Vec");
+        let mut ret =
+          Path::new(pos.file())
+            .parent().map(|p| p.to_str().unwrap()).unwrap_or(".").to_owned();
+        ret.push('/');
+        for dir in vec {
+          ret.push_str(&dir);
+          ret.push('/');
+        }
+        ret.pop();
+        ret.push_str(".asm");
+        ret
+      }
+      fn push_once(vec: &mut Vec<String>, to_push: String) {
+        if !vec.contains(&to_push) {
+          vec.push(to_push);
+        }
+      }
+      // TODO(ubsan): probably a better data structure for this
+      let mut imports = vec![filename.to_owned()];
+      let mut imports_idx = 0;
+      while imports_idx < imports.len() {
+        lexer.switch_file(&imports[imports_idx]);
+        imports_idx += 1;
+        while let Some(dir) = lexer.next_directive() {
+          if let DirectiveVar::Import(path, _) = dir.var {
+            push_once(&mut imports, make_path(&dir.pos, path));
+          } else {
+            this.directives.push(dir);
+          }
+        }
+      }
     }
 
     // normal labels
     let mut inst_offset = INST_OFFSET_BASE;
     for dir in &this.directives {
-      match dir.variant {
-        DirectiveVar::Label(ref s) => {
+      match dir.var {
+        DirectiveVar::Label(ref s, ref _public) => {
           // NOTE(ubsan): can optimize this to mem::replace(String::new())
           match this.labels.insert(s.clone(), inst_offset) {
-            Some(s) => {
-              error!(
-                dir.line, dir.offset, "Attempted to redefine label: {}", s
-              );
+            Some(_) => {
+              error!(dir.pos, "Attempted to redefine label: {}", s);
             }
             None => {}
           }
         }
         DirectiveVar::Op(ref op, _) =>
-          inst_offset += this.size_of_op_str(dir.line, dir.offset, op),
+          inst_offset += this.size_of_op_str(&dir.pos, op),
         DirectiveVar::Const(..) => {}
         DirectiveVar::Data(ref data) => inst_offset += data.len() as u16,
+        DirectiveVar::Public(_) => {
+          // TODO(ubsan): silently ignored for now
+        },
+        DirectiveVar::Import(_, _) => {},
         DirectiveVar::Macro{..} => unimplemented!(),
       }
     }
@@ -297,20 +386,24 @@ impl Parser {
     // equ constants
     let mut inst_offset = INST_OFFSET_BASE;
     for dir in &this.directives {
-      match dir.variant {
+      match dir.var {
         DirectiveVar::Label(..) => {}
         DirectiveVar::Op(ref op, _) =>
-          inst_offset += this.size_of_op_str(dir.line, dir.offset, op),
-        DirectiveVar::Const(ref s, ref arg) => {
+          inst_offset += this.size_of_op_str(&dir.pos, op),
+        DirectiveVar::Const(ref s, ref arg, ref _public) => {
           let n = arg.evaluate(&this.labels, &[], inst_offset);
           match this.labels.insert(s.clone(), n) {
             Some(s) => error!(
-              arg.line, arg.offset, "Attempted to redefine label: {}", s
+              arg.pos, "Attempted to redefine label: {}", s
             ),
             None => {},
           }
         }
         DirectiveVar::Data(ref data) => inst_offset += data.len() as u16,
+        DirectiveVar::Public(_) => {
+          // TODO(ubsan): silently ignored for now
+        },
+        DirectiveVar::Import(_, _) => {},
         DirectiveVar::Macro{..} => unimplemented!(),
       }
     }
@@ -318,7 +411,7 @@ impl Parser {
     this
   }
 
-  fn size_of_op_str(&self, line: usize, offset: usize, op: &str) -> u16 {
+  fn size_of_op_str(&self, pos: &Position, op: &str) -> u16 {
     match self.macros.get(op) {
       Some(&(_, ref ops)) => {
         let mut acc = 0;
@@ -327,7 +420,7 @@ impl Parser {
         }
         acc
       }
-      None => error!(line, offset, "Unknown opcode: {}", op),
+      None => error!(pos, "Unknown opcode: {}", op),
     }
   }
 
@@ -344,9 +437,8 @@ impl Parser {
   fn next_directive(&mut self) -> Option<Directive> {
     if self.idx < self.directives.len() {
       let ret = ::std::mem::replace(&mut self.directives[self.idx], Directive {
-        variant: DirectiveVar::Label(String::new()),
-        line: 0,
-        offset: 0,
+        var: DirectiveVar::Label(String::new(), Public::Private),
+        pos: Position::empty(),
       });
       self.idx += 1;
       Some(ret)
@@ -369,15 +461,12 @@ impl Iterator for Parser {
       let reg = args[0].evaluate(&this.labels, mac_args, this.inst_offset);
       if reg >= 0x1000 {
         error!(
-          mac_args[0].line,
-          mac_args[0].offset,
-          "Register memory is out of range: {}",
-          reg,
+          mac_args[0].pos, "Register memory is out of range: {}", reg,
         );
       }
       let num = args[1].evaluate(&this.labels, mac_args, this.inst_offset);
       (Opcode {
-        variant: op,
+        var: op,
         reg: reg,
         num: num,
       }, 2)
@@ -391,16 +480,13 @@ impl Iterator for Parser {
       let reg = args[0].evaluate(&this.labels, mac_args, this.inst_offset);
       if reg >= 0x1000 {
         error!(
-          mac_args[0].line,
-          mac_args[0].offset,
-          "Register memory is out of range: {}",
-          reg,
+          mac_args[0].pos, "Register memory is out of range: {}", reg,
         );
       }
       let num = args[1].evaluate(&this.labels, mac_args, this.inst_offset);
       let label = args[2].evaluate(&this.labels, mac_args, this.inst_offset);
       (Opcode {
-        variant: op(label),
+        var: op(label),
         reg: reg,
         num: num,
       }, 3)
@@ -413,7 +499,7 @@ impl Iterator for Parser {
       }
       let offset = data_num.len() as u16;
       (Opcode {
-        variant: OpcodeVariant::Data(data_num),
+        var: OpcodeVariant::Data(data_num),
         reg: 0,
         num: 0,
       }, offset)
@@ -453,7 +539,7 @@ impl Iterator for Parser {
     let op = match self.op_buffer.get_mut(self.op_buffer_idx) {
       Some(op) => Some(
         ::std::mem::replace(op, Opcode {
-          variant: OpcodeVariant::MoveImmediate,
+          var: OpcodeVariant::MoveImmediate,
           reg: 0,
           num: 0,
         })
@@ -468,14 +554,13 @@ impl Iterator for Parser {
       self.op_buffer.clear();
     }
     if let Some(dir) = self.next_directive() {
-      match dir.variant {
+      match dir.var {
         DirectiveVar::Op(op, mac_args) => {
           match self.macros.get(&op) {
             Some(&(ref size, ref ops)) => {
               if (mac_args.len() as u16) != *size {
                 error!(
-                  dir.line,
-                  dir.offset,
+                  dir.pos,
                   "Invalid number of args to {}; expected {}, found {}",
                   op,
                   size,
@@ -488,12 +573,12 @@ impl Iterator for Parser {
                 self.op_buffer.push(op);
               }
             },
-            None => error!(dir.line, dir.offset, "Unknown opcode"),
+            None => error!(dir.pos, "Unknown opcode"),
           }
           if let Some(op) = self.op_buffer.get_mut(0) {
             self.op_buffer_idx = 1;
             return Some(::std::mem::replace(op, Opcode {
-              variant: OpcodeVariant::MoveImmediate,
+              var: OpcodeVariant::MoveImmediate,
               reg: 0,
               num: 0,
             }));
@@ -507,12 +592,21 @@ impl Iterator for Parser {
         }
         DirectiveVar::Label(..) | DirectiveVar::Const(..) => {
           while let Some(dir) = self.directives.get(self.idx) {
-            match dir.variant {
+            match dir.var {
               DirectiveVar::Label(..) | DirectiveVar::Const(..) =>
                 self.idx += 1,
               _ => break,
             }
           }
+          self.next()
+        },
+        DirectiveVar::Public(_) => {
+          // TODO(ubsan): silently ignored for now
+          // there is no public|private distinction
+          self.next()
+        }
+        DirectiveVar::Import(_, _) => {
+          // imports aren't dealt with here
           self.next()
         },
         DirectiveVar::Macro{..} => unimplemented!(),
