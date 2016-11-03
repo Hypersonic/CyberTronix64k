@@ -322,40 +322,49 @@ impl Parser {
     };
 
     {
-      fn make_path(pos: &Position, vec: Vec<String>) -> String {
-        use std::path::Path;
+      use std::path::{Path, PathBuf};
+      fn make_path(
+        cur_path: &Path, pos: &Position, vec: Vec<String>
+      ) -> PathBuf {
         assert!(!vec.is_empty(), "ICE: DirectiveVar::Import had an empty Vec");
-        let mut ret = match Path::new(pos.file()).canonicalize() {
-          Ok(c) => c
-            .parent()
-            .map(|p| p.to_str().unwrap())
-            .unwrap_or(".")
-            .to_owned(),
-          Err(e) => panic!("ICE: {}", e),
-        };
-        ret.push('/');
-        for dir in vec {
-          ret.push_str(&dir);
-          ret.push('/');
+        let mut filename = PathBuf::new();
+        for dir in &vec {
+          filename.push(dir);
         }
-        ret.pop();
-        ret.push_str(".asm");
-        ret
+        filename.set_extension("asm");
+
+        let mut ret = PathBuf::from(cur_path);
+        ret.set_file_name(filename);
+        match ret.canonicalize() {
+          Ok(c) => c,
+          Err(_) => error!(pos, "failure to open import: {}", {
+            let mut tmp = vec.iter().fold(String::new(), |mut s, el| {
+              s.push_str(&el); s.push('.'); s
+            });
+            tmp.pop();
+            tmp
+          })
+        }
       }
-      fn push_unique(vec: &mut Vec<String>, to_push: String) {
+      fn push_unique(vec: &mut Vec<PathBuf>, to_push: PathBuf) {
         if !vec.contains(&to_push) {
           vec.push(to_push);
         }
       }
+      let filename = match Path::new(filename).canonicalize() {
+        Ok(f) => f,
+        Err(_) => error_np!("Error opening file: {:?}", filename),
+      };
       // TODO(ubsan): probably a better data structure for this
-      let mut imports = vec![filename.to_owned()];
+      let mut imports = vec![filename];
       let mut imports_idx = 0;
       while imports_idx < imports.len() {
         lexer.switch_file(&imports[imports_idx]);
         imports_idx += 1;
         while let Some(dir) = lexer.next_directive() {
           if let DirectiveVar::Import(path, _) = dir.var {
-            push_unique(&mut imports, make_path(&dir.pos, path));
+            let path = make_path(&imports[imports_idx - 1], &dir.pos, path);
+            push_unique(&mut imports, path);
           } else {
             this.directives.push(dir);
           }
