@@ -337,7 +337,7 @@ impl Parser {
         ret.push_str(".asm");
         ret
       }
-      fn push_once(vec: &mut Vec<String>, to_push: String) {
+      fn push_unique(vec: &mut Vec<String>, to_push: String) {
         if !vec.contains(&to_push) {
           vec.push(to_push);
         }
@@ -350,7 +350,7 @@ impl Parser {
         imports_idx += 1;
         while let Some(dir) = lexer.next_directive() {
           if let DirectiveVar::Import(path, _) = dir.var {
-            push_once(&mut imports, make_path(&dir.pos, path));
+            push_unique(&mut imports, make_path(&dir.pos, path));
           } else {
             this.directives.push(dir);
           }
