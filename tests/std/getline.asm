@@ -52,6 +52,6 @@ getline:
 			ji __v_getline_loop_test
 		__l_getline_loop_end:
 
-  mv __r_getline_len, __v_getline_end
+  mv __r_getline_len, __v_getline_start
   sb __r_getline_len, __ar_getline_ptr
   ret
