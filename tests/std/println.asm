@@ -8,8 +8,8 @@ public println
 #   write(STDOUT, '\n');
 # }
 
-EQU __a_println_ptr s00
-EQU __a_println_len s01
+equ __a_println_ptr s00
+equ __a_println_len s01
 println:
   call print
 	mi STDOUT, '\n'

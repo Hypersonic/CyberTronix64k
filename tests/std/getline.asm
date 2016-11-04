@@ -1,6 +1,6 @@
 import constants
 
-global getline
+public getline
 
 # struct str {
 #	  char* ptr;
@@ -35,7 +35,7 @@ equ __v_getline_end s05
 equ __v_getline_c s06
 
 getline:
-	mi __c_getline_nl, '\n'
+	mi __c_getline_lf, '\n'
 	mi __c_getline_1, 1
 
   mv __v_getline_start, __ar_getline_ptr
@@ -46,9 +46,9 @@ getline:
   jq __v_getline_start, __v_getline_end, __l_getline_loop_end
 		__v_getline_loop_start:
 			mv __v_getline_c, STDIN
-			jq __v_getline_c, __v_getline_nl, __l_getline_loop_end
+			jq __v_getline_c, __c_getline_lf, __l_getline_loop_end
 			ld __v_getline_start, __v_getline_c
-			ad __v_getline_start, __v_getline_1
+			ad __v_getline_start, __c_getline_1
 			ji __v_getline_loop_test
 		__l_getline_loop_end:
 

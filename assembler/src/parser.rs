@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use {Opcode, OpcodeVariant};
 
 use lexer::{
@@ -60,7 +61,11 @@ impl Parser {
         }
       );
     }
-    let mut lexer = Lexer::new();
+    let path: PathBuf = match Path::new(filename).canonicalize() {
+      Ok(c) => c,
+      Err(_) => error_np!("Unable to open file: {}", filename),
+    };
+    let lexer = Lexer::new(&path);
     let mut this = Parser {
       op_buffer: Vec::new(),
       op_buffer_idx: 0,
@@ -321,56 +326,7 @@ impl Parser {
       idx: 0,
     };
 
-    {
-      use std::path::{Path, PathBuf};
-      fn make_path(
-        cur_path: &Path, pos: &Position, vec: Vec<String>
-      ) -> PathBuf {
-        assert!(!vec.is_empty(), "ICE: DirectiveVar::Import had an empty Vec");
-        let mut filename = PathBuf::new();
-        for dir in &vec {
-          filename.push(dir);
-        }
-        filename.set_extension("asm");
-
-        let mut ret = PathBuf::from(cur_path);
-        ret.set_file_name(filename);
-        match ret.canonicalize() {
-          Ok(c) => c,
-          Err(_) => error!(pos, "failure to open import: {}", {
-            let mut tmp = vec.iter().fold(String::new(), |mut s, el| {
-              s.push_str(&el); s.push('.'); s
-            });
-            tmp.pop();
-            tmp
-          })
-        }
-      }
-      fn push_unique(vec: &mut Vec<PathBuf>, to_push: PathBuf) {
-        if !vec.contains(&to_push) {
-          vec.push(to_push);
-        }
-      }
-      let filename = match Path::new(filename).canonicalize() {
-        Ok(f) => f,
-        Err(_) => error_np!("Error opening file: {:?}", filename),
-      };
-      // TODO(ubsan): probably a better data structure for this
-      let mut imports = vec![filename];
-      let mut imports_idx = 0;
-      while imports_idx < imports.len() {
-        lexer.switch_file(&imports[imports_idx]);
-        imports_idx += 1;
-        while let Some(dir) = lexer.next_directive() {
-          if let DirectiveVar::Import(path, _) = dir.var {
-            let path = make_path(&imports[imports_idx - 1], &dir.pos, path);
-            push_unique(&mut imports, path);
-          } else {
-            this.directives.push(dir);
-          }
-        }
-      }
-    }
+    this.get_directives(&mut vec![path], lexer);
 
     // normal labels
     let mut inst_offset = INST_OFFSET_BASE;
@@ -423,6 +379,51 @@ impl Parser {
     }
 
     this
+  }
+
+  fn get_directives(&mut self, imports: &mut Vec<PathBuf>, mut lexer: Lexer) {
+    use std::path::{Path, PathBuf};
+    fn make_path(cur_path: &Path, pos: &Position, vec: Vec<String>) -> PathBuf {
+      assert!(!vec.is_empty(), "ICE: DirectiveVar::Import had an empty Vec");
+      let mut filename = PathBuf::new();
+      for dir in &vec {
+        filename.push(dir);
+      }
+      filename.set_extension("asm");
+
+      let mut ret = PathBuf::from(cur_path);
+      ret.set_file_name(filename);
+      match ret.canonicalize() {
+        Ok(c) => c,
+        Err(_) => error!(pos, "failure to open import: {}", {
+          let mut tmp = vec.iter().fold(String::new(), |mut s, el| {
+            s.push_str(&el); s.push('.'); s
+          });
+          tmp.pop();
+          tmp
+        })
+      }
+    }
+    fn push_unique(vec: &mut Vec<PathBuf>, to_push: PathBuf) -> bool {
+      if vec.contains(&to_push) {
+        false
+      } else {
+        vec.push(to_push);
+        true
+      }
+    }
+    let index = imports.len() - 1;
+    while let Some(dir) = lexer.next_directive() {
+      if let DirectiveVar::Import(path, _) = dir.var {
+        let path = make_path(&imports[index], &dir.pos, path);
+        if push_unique(imports, path) {
+          let new_lexer = lexer.new_file_lexer(&imports[imports.len() - 1]);
+          self.get_directives(imports, new_lexer);
+        }
+      } else {
+        self.directives.push(dir);
+      }
+    }
   }
 
   fn size_of_op_str(&self, pos: &Position, op: &str) -> u16 {

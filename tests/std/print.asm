@@ -17,6 +17,7 @@ equ __a_print_len s01
 equ __c_print_1 s02 ; instead of inc, make the temporary reg once
 
 equ __v_print_end s03
+
 print:
 	mi __c_print_1, 1
 

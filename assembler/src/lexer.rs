@@ -265,23 +265,7 @@ pub struct Lexer {
 }
 // UTILITY
 impl Lexer {
-  pub fn new() -> Self {
-    let files = Files::new();
-    let pos = Position {
-      line: 0,
-      offset: 0,
-      file: File(0),
-      files: files.clone()
-    };
-    Lexer {
-      input: Vec::new(),
-      idx: 0,
-      files: files,
-      pos: pos,
-    }
-  }
-
-  pub fn switch_file(&mut self, filename: &Path) {
+  fn get_bytes(filename: &Path) -> Vec<u8> {
     use std::io::Read;
     let mut file = match ::std::fs::File::open(filename) {
       Ok(file) => file,
@@ -298,11 +282,31 @@ impl Lexer {
       Err(e) => error_np!(
         "Failed to read file: `{}'\nError: {}", filename.to_str().unwrap(), e,
       ),
+    };
+    bytes
+  }
+  pub fn new(filename: &Path) -> Self {
+    let bytes = Self::get_bytes(filename);
+    let files = Files::new();
+    let pos = Position::new(filename.to_str().unwrap(), files.clone());
+    Lexer {
+      input: bytes,
+      idx: 0,
+      files: files,
+      pos: pos,
     }
-    let pos = Position::new(filename.to_str().unwrap(), self.files.clone());
-    self.input = bytes;
-    self.idx = 0;
-    self.pos = pos;
+  }
+
+  pub fn new_file_lexer(&self, filename: &Path) -> Self {
+    let bytes = Self::get_bytes(filename);
+    let files = self.files.clone();
+    let pos = Position::new(filename.to_str().unwrap(), files.clone());
+    Lexer {
+      input: bytes,
+      idx: 0,
+      files: files,
+      pos: pos,
+    }
   }
 
   pub fn compiler_defined_pos(&self) -> Position {
