@@ -1,6 +1,6 @@
 import constants
 
-global printhex
+public printhex
 
 equ __a_printhex_num s00
 
