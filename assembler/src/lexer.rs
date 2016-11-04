@@ -344,6 +344,23 @@ impl Lexer {
     }
   }
 
+  fn block_comment(&mut self) {
+    while let Some(c) = self.get_char() {
+      if c == b'-' {
+        if let Some(b'#') = self.peek_char() {
+          self.get_char();
+          return;
+        }
+      } else if c == b'#' {
+        if let Some(b'-') = self.peek_char() {
+          self.get_char();
+          self.block_comment();
+        }
+      }
+    }
+    error!(self.pos, "Unexpected EOF");
+  }
+
   fn next_token(&mut self) -> Option<Token> {
     fn is_space(c: u8) -> bool {
       c == b' ' || c == b'\t' || c == 0x0b || c == 0x0c  || c == b'\r'
@@ -382,6 +399,13 @@ impl Lexer {
         }
       }
       Some(ch) if ch == b'#' || ch == b';' => {
+        if let Some(c)  = self.peek_char() {
+          if ch == b'#' && c == b'-' {
+            self.get_char();
+            self.block_comment();
+            self.next_token();
+          }
+        }
         while let Some(c) = self.peek_char() {
           if c != b'\n' { self.get_char(); }
           else { break; }
