@@ -653,16 +653,23 @@ impl Lexer {
     let op = Self::to_string(&pos, op);
     let mut args = Vec::new();
     while let Some(tok) = self.next_token() {
-      if let Some(arg) = Self::get_op_arg(tok) {
+      let pos = tok.pos.clone();
+      if let TokenVar::Newline = tok.var {
+        break;
+      } else if let Some(arg) = Self::get_op_arg(tok) {
         args.push(arg);
-      }
-      if let Some(tok) = self.next_token() {
-        if let TokenVar::Newline = tok.var {
-          break;
-        } else if let TokenVar::Comma = tok.var {
+        if let Some(tok) = self.next_token() {
+          if let TokenVar::Newline = tok.var {
+            break;
+          } else if let TokenVar::Comma = tok.var {
+          } else {
+            error!(tok.pos, "Expected a comma or a newline");
+          }
         } else {
-          error!(tok.pos, "Expected a comma or a newline");
+          break;
         }
+      } else {
+        error!(pos, "Expected an argument or a newline");
       }
     }
     Directive {
