@@ -203,27 +203,27 @@ impl Parser {
         ]),
         "inc".to_owned() => (1, vec![
           (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, Number(REG_SC0)),
             macro_op_arg!(lexer, Number(1))
           ]),
           (BaseOp::Add, vec![
             macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, Number(REG_SC0)),
           ]),
         ]),
         "dec".to_owned() => (1, vec![
           (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, Number(REG_SC0)),
             macro_op_arg!(lexer, Number(1)),
           ]),
           (BaseOp::Sub, vec![
             macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, Number(REG_SC0)),
           ]),
         ]),
         "neg".to_owned() => (1, vec![
           (BaseOp::Move, vec![
-            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, Number(REG_SC0)),
             macro_op_arg!(lexer, MacroArg(0)),
           ]),
           (BaseOp::MoveImmediate, vec![
@@ -232,37 +232,37 @@ impl Parser {
           ]),
           (BaseOp::Sub, vec![
             macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, Number(REG_SC0)),
           ]),
         ]),
         "adi".to_owned() => (2, vec![
           (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, Number(REG_SC0)),
             macro_op_arg!(lexer, MacroArg(1)),
           ]),
           (BaseOp::Add, vec![
             macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, Number(REG_SC0)),
           ]),
         ]),
         "sbi".to_owned() => (2, vec![
           (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, Number(REG_SC0)),
             macro_op_arg!(lexer, MacroArg(1)),
           ]),
           (BaseOp::Sub, vec![
             macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, Number(REG_SC0)),
           ]),
         ]),
         "push".to_owned() => (1, vec![
           (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, Number(REG_SC0)),
             macro_op_arg!(lexer, Number(1)),
           ]),
           (BaseOp::Add, vec![
             macro_op_arg!(lexer, Number(REG_SP)),
-            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, Number(REG_SC0)),
           ]),
           (BaseOp::Load, vec![
             macro_op_arg!(lexer, Number(REG_SP)),
@@ -275,25 +275,25 @@ impl Parser {
             macro_op_arg!(lexer, Number(REG_SP)),
           ]),
           (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, Number(REG_SC0)),
             macro_op_arg!(lexer, Number(1)),
           ]),
           (BaseOp::Sub, vec![
             macro_op_arg!(lexer, Number(REG_SP)),
-            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, Number(REG_SC0)),
           ]),
         ]),
         "call".to_owned() => (1, vec![
           (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, Number(REG_SC0)),
             macro_op_arg!(lexer, Number(1)),
           ]),
           (BaseOp::Add, vec![
             macro_op_arg!(lexer, Number(REG_SP)),
-            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, Number(REG_SC0)),
           ]),
           (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, Number(REG_SC0)),
             macro_op_arg!(lexer, ArithOp(
               lexer::ArithOp::Add,
               Box::new(macro_op_arg!(lexer, Here)),
@@ -302,7 +302,7 @@ impl Parser {
           ]),
           (BaseOp::Load, vec![
             macro_op_arg!(lexer, Number(REG_SP)),
-            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, Number(REG_SC0)),
           ]),
           (BaseOp::MoveImmediate, vec![
             macro_op_arg!(lexer, Number(REG_IP)),
@@ -311,20 +311,20 @@ impl Parser {
         ]),
         "ret".to_owned() => (0, vec![
           (BaseOp::MoveDeref, vec![
-            macro_op_arg!(lexer, Number(REG_SC2)),
+            macro_op_arg!(lexer, Number(REG_SC1)),
             macro_op_arg!(lexer, Number(REG_SP)),
           ]),
           (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, Number(REG_SC0)),
             macro_op_arg!(lexer, Number(1)),
           ]),
           (BaseOp::Sub, vec![
             macro_op_arg!(lexer, Number(REG_SP)),
-            macro_op_arg!(lexer, Number(REG_SC)),
+            macro_op_arg!(lexer, Number(REG_SC0)),
           ]),
           (BaseOp::Move, vec![
             macro_op_arg!(lexer, Number(REG_IP)),
-            macro_op_arg!(lexer, Number(REG_SC2)),
+            macro_op_arg!(lexer, Number(REG_SC1)),
           ])
         ]),
       },
