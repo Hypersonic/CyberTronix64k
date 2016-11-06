@@ -37,86 +37,94 @@ enum BaseOp {
 }
 
 #[derive(Copy, Clone)]
-enum Immediate {
-  Immediate = 0x0,
-  Memory = 0x1,
-  Unknown,
-}
-
-impl Immediate {
-  fn to_u16(self) -> u16 {
-    if let Immediate::Unknown = self {
-      panic!("Attempted to get an opcode with an Unknown immediate\n");
-    } else {
-      self as u16
-    }
-  }
-}
-
-#[derive(Copy, Clone)]
 pub struct Opcode {
   base: BaseOp,
-  imm: Immediate,
+  imm: bool,
   bits16: bool,
 }
 
 impl Opcode {
   pub fn from_str(s: &str) -> Option<Opcode> {
-    use self::Immediate::*;
     Some(match s {
-      "mvi" => Opcode { base: BaseOp::Mvi, bits16: true, imm: Memory },
-      "mvib" => Opcode { base: BaseOp::Mvi, bits16: false, imm: Memory },
-      "ldi" => Opcode { base: BaseOp::Mvi, bits16: true, imm: Immediate },
-      "ldib" => Opcode { base: BaseOp::Mvi, bits16: false, imm: Immediate },
+      "mvi" => Opcode { base: BaseOp::Mvi, bits16: true, imm: false },
+      "mvib" => Opcode { base: BaseOp::Mvi, bits16: false, imm: false },
+      "ldi" => Opcode { base: BaseOp::Mvi, bits16: true, imm: true },
+      "ldbi" => Opcode { base: BaseOp::Mvi, bits16: false, imm: true },
 
-      "mv" => Opcode { base: BaseOp::Mv, bits16: true, imm: Memory },
-      "mvb" => Opcode { base: BaseOp::Mv, bits16: false, imm: Memory },
-      "ld" => Opcode { base: BaseOp::Mv, bits16: true, imm: Immediate },
-      "ldb" => Opcode { base: BaseOp::Mv, bits16: false, imm: Immediate },
+      "mv" => Opcode { base: BaseOp::Mv, bits16: true, imm: false },
+      "mvb" => Opcode { base: BaseOp::Mv, bits16: false, imm: false },
+      "ld" => Opcode { base: BaseOp::Mv, bits16: true, imm: true },
+      "ldb" => Opcode { base: BaseOp::Mv, bits16: false, imm: true },
 
-      "mvd" => Opcode { base: BaseOp::Mvd, bits16: true, imm: Memory },
-      "mvdb" => Opcode { base: BaseOp::Mvd, bits16: false, imm: Memory },
-      "ldd" => Opcode { base: BaseOp::Mvd, bits16: true, imm: Immediate },
-      "lddb" => Opcode { base: BaseOp::Mvd, bits16: false, imm: Immediate },
+      "mvd" => Opcode { base: BaseOp::Mvd, bits16: true, imm: false },
+      "mvdb" => Opcode { base: BaseOp::Mvd, bits16: false, imm: false },
+      "ldd" => Opcode { base: BaseOp::Mvd, bits16: true, imm: true },
+      "ldbd" => Opcode { base: BaseOp::Mvd, bits16: false, imm: true },
 
-      "and" => Opcode { base: BaseOp::And, bits16: true, imm: Unknown },
-      "andb" => Opcode { base: BaseOp::And, bits16: false, imm: Unknown },
+      "nd" => Opcode { base: BaseOp::And, bits16: true, imm: false },
+      "ndb" => Opcode { base: BaseOp::And, bits16: false, imm: false },
+      "ndi" => Opcode { base: BaseOp::And, bits16: true, imm: true },
+      "ndbi" => Opcode { base: BaseOp::And, bits16: false, imm: true },
 
-      "or" => Opcode { base: BaseOp::Or, bits16: true, imm: Unknown },
-      "orb" => Opcode { base: BaseOp::Or, bits16: false, imm: Unknown },
+      "or" => Opcode { base: BaseOp::Or, bits16: true, imm: false },
+      "orb" => Opcode { base: BaseOp::Or, bits16: false, imm: false },
+      "ori" => Opcode { base: BaseOp::Or, bits16: true, imm: true },
+      "orbi" => Opcode { base: BaseOp::Or, bits16: false, imm: true },
 
-      "xor" => Opcode { base: BaseOp::Xor, bits16: true, imm: Unknown },
-      "xorb" => Opcode { base: BaseOp::Xor, bits16: false, imm: Unknown },
+      "xr" => Opcode { base: BaseOp::Xor, bits16: true, imm: false },
+      "xrb" => Opcode { base: BaseOp::Xor, bits16: false, imm: false },
+      "xri" => Opcode { base: BaseOp::Xor, bits16: true, imm: true },
+      "xrbi" => Opcode { base: BaseOp::Xor, bits16: false, imm: true },
 
-      "add" => Opcode { base: BaseOp::Add, bits16: true, imm: Unknown },
-      "addb" => Opcode { base: BaseOp::Add, bits16: false, imm: Unknown },
+      "ad" => Opcode { base: BaseOp::Add, bits16: true, imm: false },
+      "adb" => Opcode { base: BaseOp::Add, bits16: false, imm: false },
+      "adi" => Opcode { base: BaseOp::Add, bits16: true, imm: true },
+      "adbi" => Opcode { base: BaseOp::Add, bits16: false, imm: true },
 
-      "sub" => Opcode { base: BaseOp::Sub, bits16: true, imm: Unknown },
-      "subb" => Opcode { base: BaseOp::Sub, bits16: false, imm: Unknown },
+      "sb" => Opcode { base: BaseOp::Sub, bits16: true, imm: false },
+      "sbb" => Opcode { base: BaseOp::Sub, bits16: false, imm: false },
+      "sbi" => Opcode { base: BaseOp::Sub, bits16: true, imm: true },
+      "sbbi" => Opcode { base: BaseOp::Sub, bits16: false, imm: true },
 
-      "shr" => Opcode { base: BaseOp::Shr, bits16: true, imm: Unknown },
-      "shrb" => Opcode { base: BaseOp::Shr, bits16: false, imm: Unknown },
+      "sr" => Opcode { base: BaseOp::Shr, bits16: true, imm: false },
+      "srb" => Opcode { base: BaseOp::Shr, bits16: false, imm: false },
+      "sri" => Opcode { base: BaseOp::Shr, bits16: true, imm: true },
+      "srbi" => Opcode { base: BaseOp::Shr, bits16: false, imm: true },
 
-      "shl" => Opcode { base: BaseOp::Shl, bits16: true, imm: Unknown },
-      "shlb" => Opcode { base: BaseOp::Shl, bits16: false, imm: Unknown },
+      "sl" => Opcode { base: BaseOp::Shl, bits16: true, imm: false },
+      "slb" => Opcode { base: BaseOp::Shl, bits16: false, imm: false },
+      "sli" => Opcode { base: BaseOp::Shl, bits16: true, imm: true },
+      "slbi" => Opcode { base: BaseOp::Shl, bits16: false, imm: true },
 
-      "sha" => Opcode { base: BaseOp::Sha, bits16: true, imm: Unknown },
-      "shab" => Opcode { base: BaseOp::Sha, bits16: false, imm: Unknown },
+      "sa" => Opcode { base: BaseOp::Sha, bits16: true, imm: false },
+      "sab" => Opcode { base: BaseOp::Sha, bits16: false, imm: false },
+      "sai" => Opcode { base: BaseOp::Sha, bits16: true, imm: true },
+      "sabi" => Opcode { base: BaseOp::Sha, bits16: false, imm: true },
 
-      "jl" => Opcode { base: BaseOp::Jl, bits16: true, imm: Unknown },
-      "jle" => Opcode { base: BaseOp::Jl, bits16: false, imm: Unknown },
+      "jl" => Opcode { base: BaseOp::Jl, bits16: true, imm: false },
+      "jle" => Opcode { base: BaseOp::Jl, bits16: false, imm: false },
+      "jli" => Opcode { base: BaseOp::Jl, bits16: true, imm: true },
+      "jlei" => Opcode { base: BaseOp::Jl, bits16: false, imm: true },
 
-      "jg" => Opcode { base: BaseOp::Jg, bits16: true, imm: Unknown },
-      "jge" => Opcode { base: BaseOp::Jg, bits16: false, imm: Unknown },
+      "jg" => Opcode { base: BaseOp::Jg, bits16: true, imm: false },
+      "jge" => Opcode { base: BaseOp::Jg, bits16: false, imm: false },
+      "jgi" => Opcode { base: BaseOp::Jg, bits16: true, imm: true },
+      "jgei" => Opcode { base: BaseOp::Jg, bits16: false, imm: true },
 
-      "jb" => Opcode { base: BaseOp::Jb, bits16: true, imm: Unknown },
-      "jbe" => Opcode { base: BaseOp::Jb, bits16: false, imm: Unknown },
+      "jb" => Opcode { base: BaseOp::Jb, bits16: true, imm: false },
+      "jbe" => Opcode { base: BaseOp::Jb, bits16: false, imm: false },
+      "jbi" => Opcode { base: BaseOp::Jb, bits16: true, imm: true },
+      "jbei" => Opcode { base: BaseOp::Jb, bits16: false, imm: true },
 
-      "ja" => Opcode { base: BaseOp::Ja, bits16: true, imm: Unknown },
-      "jae" => Opcode { base: BaseOp::Ja, bits16: false, imm: Unknown },
+      "ja" => Opcode { base: BaseOp::Ja, bits16: true, imm: false },
+      "jae" => Opcode { base: BaseOp::Ja, bits16: false, imm: false },
+      "jai" => Opcode { base: BaseOp::Ja, bits16: true, imm: true },
+      "jaei" => Opcode { base: BaseOp::Ja, bits16: false, imm: true },
 
-      "jq" => Opcode { base: BaseOp::Jq, bits16: true, imm: Unknown },
-      "jnq" => Opcode { base: BaseOp::Jq, bits16: false, imm: Unknown },
+      "jq" => Opcode { base: BaseOp::Jq, bits16: true, imm: false },
+      "jnq" => Opcode { base: BaseOp::Jq, bits16: false, imm: false },
+      "jqi" => Opcode { base: BaseOp::Jq, bits16: true, imm: true },
+      "jnqi" => Opcode { base: BaseOp::Jq, bits16: false, imm: true },
 
       _ => return None,
     })
@@ -125,7 +133,7 @@ impl Opcode {
   pub fn to_u16(self) -> u16 {
     self.base as u16
       | (self.bits16 as u16) << 4
-      | self.imm.to_u16() << 5
+      | (self.imm as u16) << 5
   }
 
   pub fn size(&self) -> u16 {
@@ -138,6 +146,25 @@ impl Opcode {
 
   pub fn is_arith(&self) -> bool {
     (self.base as u16) < (BaseOp::Jl as u16)
+  }
+
+  fn args(&self) -> &'static [OpArg] {
+    static ARGS: &'static [OpArg] = &[
+      OpArg {
+        var: OpArgVar::MacroArg(0),
+        pos: lexer.compiler_defined_pos(),
+      },
+      OpArg {
+        var: OpArgVar::MacroArg(1),
+        pos: lexer.compiler_defined_pos(),
+      },
+      OpArg {
+        var: OpArgVar::MacroArg(2),
+        pos: lexer.compiler_defined_pos(),
+      },
+    ];
+    if self.is_arith() {
+    }
   }
 }
 
@@ -409,24 +436,30 @@ impl Iterator for Parser {
     if let Some(dir) = self.next_directive() {
       match dir.var {
         DirectiveVar::Op(op, mac_args) => {
-          match self.macros.get(&op) {
-            Some(&(ref size, ref ops)) => {
-              if (mac_args.len() as u16) != *size {
-                error!(
-                  dir.pos,
-                  "Invalid number of args to {}; expected {}, found {}",
-                  op,
-                  size,
-                  mac_args.len(),
-                )
-              }
-              for &(ref op, ref args) in ops {
-                let (op, offset) = opcode(self, *op, args, &mac_args);
-                self.inst_offset += offset;
-                self.inst_buffer.push(op);
-              }
-            },
-            None => error!(dir.pos, "Unknown opcode"),
+          if let Some(op) = Opcode::from_str(&op) {
+            let (op, offset) = opcode(self, op, , &mac_args);
+            self.inst_offset += offset;
+            self.inst_buffer.push(op);
+          } else {
+            match self.macros.get(&op) {
+              Some(&(ref size, ref ops)) => {
+                if (mac_args.len() as u16) != *size {
+                  error!(
+                    dir.pos,
+                    "Invalid number of args to {}; expected {}, found {}",
+                    op,
+                    size,
+                    mac_args.len(),
+                  )
+                }
+                for &(ref op, ref args) in ops {
+                  let (op, offset) = opcode(self, *op, args, &mac_args);
+                  self.inst_offset += offset;
+                  self.inst_buffer.push(op);
+                }
+              },
+              None => error!(dir.pos, "Unknown opcode"),
+            }
           }
           if let Some(inst) = self.inst_buffer.get_mut(0) {
             self.inst_buffer_idx = 1;

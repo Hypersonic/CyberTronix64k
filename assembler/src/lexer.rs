@@ -390,7 +390,6 @@ impl Lexer {
     }
   }
 
-  #[allow(dead_code)]
   pub fn compiler_defined_pos(&self) -> Position {
     Position {
       line: 0,
