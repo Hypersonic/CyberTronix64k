@@ -1,8 +1,8 @@
 run: interp
 	./interp ../t
 
+interp: interp.cpp memory.h
+	g++ -Wall -Wextra --std=c++11 interp.cpp -o interp
+
 clean:
 	rm ./interp
-
-interp: interp.cpp memory.cpp memory.h
-	gcc --std=c++11 interp.cpp memory.cpp -o interp

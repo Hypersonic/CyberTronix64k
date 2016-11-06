@@ -145,10 +145,74 @@ impl OpArg {
       OpArgVar::Here => inst_offset,
     }
   }
+
+  pub fn evaluate_u8(
+    &self, labels: &HashMap<String, u16>, mac_args: &[OpArg], inst_offset: u16,
+  ) -> u8 {
+    match self.var {
+      OpArgVar::Number(n) => {
+        if n > u8::max_value() as u16 {
+          warning!(self.pos, "Overflowing byte literal ({})", n);
+        }
+        n as u8
+      },
+      OpArgVar::Label(ref label) => match labels.get(label) {
+        Some(&n) => {
+          if n > u8::max_value() as u16 {
+            warning!(self.pos, "Overflowing byte literal ({})", n);
+          }
+          n as u8
+        }
+        None => error!(self.pos, "Undefined label: {}", label),
+      },
+      OpArgVar::MacroArg(n) => {
+        let ret = mac_args[n as usize].evaluate(labels, &[], inst_offset);
+        if ret > u8::max_value() as u16 {
+          warning!(
+            self.pos, "Overflowing byte literal ({})", mac_args[n as usize],
+          );
+        }
+        ret as u8
+      },
+      OpArgVar::ArithOp(ref op, ref lhs, ref rhs) => {
+        let ret = op.op(
+          lhs.evaluate(labels, mac_args, inst_offset),
+          rhs.evaluate(labels, mac_args, inst_offset),
+        );
+        if ret > u8::max_value() as u16 {
+          warning!(
+            self.pos, "Overflowing byte literal ({} {} {})", lhs, op, rhs,
+          );
+        }
+        ret as u8
+      },
+      OpArgVar::Here => {
+        warning!(
+          self.pos,
+          "Using $ as a byte literal; this will chop off the top byte of the current position."
+        );
+        inst_offset as u8
+      },
+    }
+  }
+}
+
+impl Display for OpArg {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match self.var {
+      OpArgVar::Number(n) => write!(f, "0x{:X}", n),
+      OpArgVar::Label(ref label) => write!(f, "{}", label),
+      OpArgVar::MacroArg(n) => write!(f, "%{}", n),
+      OpArgVar::ArithOp(ref op, ref lhs, ref rhs) =>
+        write!(f, "({} {} {})", lhs, op, rhs),
+      OpArgVar::Here => write!(f, "$"),
+    }
+  }
 }
 
 #[derive(Copy, Clone)]
 pub enum ArithOp {
+  #[allow(dead_code)]
   Add,
   #[allow(dead_code)]
   Sub,
@@ -156,6 +220,18 @@ pub enum ArithOp {
   Mul,
   #[allow(dead_code)]
   Div,
+}
+
+impl Display for ArithOp {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    let tmp = match *self {
+      ArithOp::Add => "+",
+      ArithOp::Sub => "-",
+      ArithOp::Mul => "*",
+      ArithOp::Div => "/",
+    };
+    f.write_str(tmp)
+  }
 }
 
 impl ArithOp {
@@ -173,7 +249,9 @@ impl ArithOp {
 pub enum OpArgVar {
   Number(u16),
   Label(String),
+  #[allow(dead_code)]
   MacroArg(u16),
+  #[allow(dead_code)]
   ArithOp(ArithOp, Box<OpArg>, Box<OpArg>),
   Here, // $
 }
@@ -192,6 +270,7 @@ pub enum DirectiveVar {
   Const(String, OpArg, Public),
   Op(String, Vec<OpArg>),
   // TODO(ubsan): allow non-constant reps?
+  ByteData(Vec<OpArg>),
   Data(Vec<OpArg>),
   #[allow(dead_code)]
   Macro {
@@ -215,6 +294,7 @@ enum TokenVar {
   MacroArg(u16),
   MacroLabel(Vec<u8>),
   Data,
+  ByteData,
   Equ,
   Rep,
   Macro,
@@ -239,7 +319,8 @@ impl Display for TokenVar {
       TokenVar::Equ => write!(f, "equ directive"),
       TokenVar::Import => write!(f, "import directive"),
       TokenVar::Public => write!(f, "public directive"),
-      TokenVar::Data => write!(f, "data directive"),
+      TokenVar::ByteData => write!(f, "db directive"),
+      TokenVar::Data => write!(f, "dw directive"),
       TokenVar::Rep => write!(f, "rep directive"),
       TokenVar::Macro => write!(f, "macro directive"),
       TokenVar::EndMacro => write!(f, "endmacro directive"),
@@ -309,6 +390,7 @@ impl Lexer {
     }
   }
 
+  #[allow(dead_code)]
   pub fn compiler_defined_pos(&self) -> Position {
     Position {
       line: 0,
@@ -489,7 +571,9 @@ impl Lexer {
         }
         Some(Token {
           var: {
-            if ret == b"data" {
+            if ret == b"db" {
+              TokenVar::ByteData
+            } else if ret == b"dw" {
               TokenVar::Data
             } else if ret == b"equ" {
               TokenVar::Equ
@@ -678,7 +762,7 @@ impl Lexer {
     }
   }
 
-  fn dir_data(&mut self, pos: Position) -> Directive {
+  fn dir_data(&mut self, pos: Position, bits16: bool) -> Directive {
     let mut data = Vec::new();
     while let Some(tok) = self.next_token() {
       match tok.var {
@@ -725,9 +809,16 @@ impl Lexer {
         tv => error!(tok.pos, "Unexpected {}", tv),
       }
     }
-    Directive {
-      var: DirectiveVar::Data(data),
-      pos: pos,
+    if bits16 {
+      Directive {
+        var: DirectiveVar::Data(data),
+        pos: pos,
+      }
+    } else {
+      Directive {
+        var: DirectiveVar::ByteData(data),
+        pos: pos,
+      }
     }
   }
 
@@ -830,7 +921,8 @@ impl Lexer {
         TokenVar::Newline => return self.next_directive(),
         TokenVar::Label(label) => self.dir_label(tok.pos, label),
         TokenVar::Ident(op) => self.dir_ident(tok.pos, op),
-        TokenVar::Data => self.dir_data(tok.pos),
+        TokenVar::ByteData => self.dir_data(tok.pos, false),
+        TokenVar::Data => self.dir_data(tok.pos, true),
         TokenVar::Public => self.dir_public(tok.pos),
         TokenVar::Import => self.dir_import(tok.pos),
         TokenVar::Equ => self.dir_equ(tok.pos),

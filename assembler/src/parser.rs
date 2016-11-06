@@ -1,46 +1,154 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use {Opcode, OpcodeVariant};
+use Instruction;
 
 use lexer::{
-  self, Directive, DirectiveVar, Lexer, OpArg, OpArgVar, Position, Public,
+  Directive, DirectiveVar, Lexer, OpArg, Position, Public,
 };
 
-const INST_OFFSET_BASE: u16 = 0x1000;
+const CODE_START: u16 = 0x400;
 
 const REG_IP: u16 = 0x0;
-const REG_SP: u16 = 0x1;
-const REG_BP: u16 = 0x2;
-const REG_SC: u16 = 0x3;
-const REG_SC2: u16 = 0x4;
+const REG_SP: u16 = 0x2;
+const REG_BP: u16 = 0x4;
+const REG_SC0: u16 = 0x6;
+const REG_SC1: u16 = 0x8;
+const REG_SC2: u16 = 0xA;
+const REG_SC3: u16 = 0xC;
 
 #[derive(Copy, Clone)]
 enum BaseOp {
-  MoveImmediate,
-  Move,
-  MoveDeref,
-  Load,
-  Store,
-  Add,
-  Sub,
-  And,
-  Or,
-  Xor,
-  ShiftRight,
-  ShiftLeft,
-  ShiftArithmetic,
-  JumpGreater,
-  JumpLesser,
-  JumpEqual,
+  Mvi = 0x0,
+  Mv = 0x1,
+  Mvd = 0x2,
+  And = 0x3,
+  Or = 0x4,
+  Xor = 0x5,
+  Add = 0x6,
+  Sub = 0x7,
+  Shr = 0x8,
+  Shl = 0x9,
+  Sha = 0xA,
+  Jl = 0xB,
+  Jg = 0xC,
+  Jb = 0xD,
+  Ja = 0xE,
+  Jq = 0xF,
+}
+
+#[derive(Copy, Clone)]
+enum Immediate {
+  Immediate = 0x0,
+  Memory = 0x1,
+  Unknown,
+}
+
+impl Immediate {
+  fn to_u16(self) -> u16 {
+    if let Immediate::Unknown = self {
+      panic!("Attempted to get an opcode with an Unknown immediate\n");
+    } else {
+      self as u16
+    }
+  }
+}
+
+#[derive(Copy, Clone)]
+pub struct Opcode {
+  base: BaseOp,
+  imm: Immediate,
+  bits16: bool,
+}
+
+impl Opcode {
+  pub fn from_str(s: &str) -> Option<Opcode> {
+    use self::Immediate::*;
+    Some(match s {
+      "mvi" => Opcode { base: BaseOp::Mvi, bits16: true, imm: Memory },
+      "mvib" => Opcode { base: BaseOp::Mvi, bits16: false, imm: Memory },
+      "ldi" => Opcode { base: BaseOp::Mvi, bits16: true, imm: Immediate },
+      "ldib" => Opcode { base: BaseOp::Mvi, bits16: false, imm: Immediate },
+
+      "mv" => Opcode { base: BaseOp::Mv, bits16: true, imm: Memory },
+      "mvb" => Opcode { base: BaseOp::Mv, bits16: false, imm: Memory },
+      "ld" => Opcode { base: BaseOp::Mv, bits16: true, imm: Immediate },
+      "ldb" => Opcode { base: BaseOp::Mv, bits16: false, imm: Immediate },
+
+      "mvd" => Opcode { base: BaseOp::Mvd, bits16: true, imm: Memory },
+      "mvdb" => Opcode { base: BaseOp::Mvd, bits16: false, imm: Memory },
+      "ldd" => Opcode { base: BaseOp::Mvd, bits16: true, imm: Immediate },
+      "lddb" => Opcode { base: BaseOp::Mvd, bits16: false, imm: Immediate },
+
+      "and" => Opcode { base: BaseOp::And, bits16: true, imm: Unknown },
+      "andb" => Opcode { base: BaseOp::And, bits16: false, imm: Unknown },
+
+      "or" => Opcode { base: BaseOp::Or, bits16: true, imm: Unknown },
+      "orb" => Opcode { base: BaseOp::Or, bits16: false, imm: Unknown },
+
+      "xor" => Opcode { base: BaseOp::Xor, bits16: true, imm: Unknown },
+      "xorb" => Opcode { base: BaseOp::Xor, bits16: false, imm: Unknown },
+
+      "add" => Opcode { base: BaseOp::Add, bits16: true, imm: Unknown },
+      "addb" => Opcode { base: BaseOp::Add, bits16: false, imm: Unknown },
+
+      "sub" => Opcode { base: BaseOp::Sub, bits16: true, imm: Unknown },
+      "subb" => Opcode { base: BaseOp::Sub, bits16: false, imm: Unknown },
+
+      "shr" => Opcode { base: BaseOp::Shr, bits16: true, imm: Unknown },
+      "shrb" => Opcode { base: BaseOp::Shr, bits16: false, imm: Unknown },
+
+      "shl" => Opcode { base: BaseOp::Shl, bits16: true, imm: Unknown },
+      "shlb" => Opcode { base: BaseOp::Shl, bits16: false, imm: Unknown },
+
+      "sha" => Opcode { base: BaseOp::Sha, bits16: true, imm: Unknown },
+      "shab" => Opcode { base: BaseOp::Sha, bits16: false, imm: Unknown },
+
+      "jl" => Opcode { base: BaseOp::Jl, bits16: true, imm: Unknown },
+      "jle" => Opcode { base: BaseOp::Jl, bits16: false, imm: Unknown },
+
+      "jg" => Opcode { base: BaseOp::Jg, bits16: true, imm: Unknown },
+      "jge" => Opcode { base: BaseOp::Jg, bits16: false, imm: Unknown },
+
+      "jb" => Opcode { base: BaseOp::Jb, bits16: true, imm: Unknown },
+      "jbe" => Opcode { base: BaseOp::Jb, bits16: false, imm: Unknown },
+
+      "ja" => Opcode { base: BaseOp::Ja, bits16: true, imm: Unknown },
+      "jae" => Opcode { base: BaseOp::Ja, bits16: false, imm: Unknown },
+
+      "jq" => Opcode { base: BaseOp::Jq, bits16: true, imm: Unknown },
+      "jnq" => Opcode { base: BaseOp::Jq, bits16: false, imm: Unknown },
+
+      _ => return None,
+    })
+  }
+
+  pub fn to_u16(self) -> u16 {
+    self.base as u16
+      | (self.bits16 as u16) << 4
+      | self.imm.to_u16() << 5
+  }
+
+  pub fn size(&self) -> u16 {
+    if self.is_arith() {
+      2
+    } else {
+      3
+    }
+  }
+
+  pub fn is_arith(&self) -> bool {
+    (self.base as u16) < (BaseOp::Jl as u16)
+  }
 }
 
 pub struct Parser {
-  op_buffer: Vec<Opcode>,
-  op_buffer_idx: usize,
+  // TODO(ubsan): rename to inst_buffer
+  inst_buffer: Vec<Instruction>,
+  inst_buffer_idx: usize,
   inst_offset: u16,
   directives: Vec<Directive>,
   labels: HashMap<String, u16>,
-  macros: HashMap<String, (u16, Vec<(BaseOp, Vec<OpArg>)>)>,
+  macros: HashMap<String, (u16, Vec<(Opcode, Vec<OpArg>)>)>,
   idx: usize,
 }
 
@@ -67,269 +175,27 @@ impl Parser {
     };
     let lexer = Lexer::new(&path);
     let mut this = Parser {
-      op_buffer: Vec::new(),
-      op_buffer_idx: 0,
-      inst_offset: INST_OFFSET_BASE,
+      inst_buffer: Vec::new(),
+      inst_buffer_idx: 0,
+      inst_offset: CODE_START,
       directives: Vec::new(),
       labels: hashmap! {
         "ip".to_owned() => REG_IP,
         "sp".to_owned() => REG_SP,
         "bp".to_owned() => REG_BP,
-        "sc".to_owned() => REG_SC,
+        "sc0".to_owned() => REG_SC0,
+        "sc1".to_owned() => REG_SC1,
+        "sc2".to_owned() => REG_SC2,
+        "sc3".to_owned() => REG_SC3,
       },
-      macros: hashmap! {
-        "mi".to_owned() => (2, vec![
-          (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, MacroArg(1)),
-          ])
-        ]),
-        "mv".to_owned() => (2, vec![
-          (BaseOp::Move, vec![
-            macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, MacroArg(1))
-          ])
-        ]),
-        "md".to_owned() => (2, vec![
-          (BaseOp::MoveDeref, vec![
-            macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, MacroArg(1)),
-          ])
-        ]),
-        "ld".to_owned() => (2, vec![
-          (BaseOp::Load, vec![
-            macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, MacroArg(1)),
-          ])
-        ]),
-        "st".to_owned() => (2, vec![
-          (BaseOp::Store, vec![
-            macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, MacroArg(1)),
-          ])
-        ]),
-        "ad".to_owned() => (2, vec![
-          (BaseOp::Add, vec![
-            macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, MacroArg(1)),
-          ])
-        ]),
-        "sb".to_owned() => (2, vec![
-          (BaseOp::Sub, vec![
-            macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, MacroArg(1)),
-          ])
-        ]),
-        "nd".to_owned() => (2, vec![
-          (BaseOp::And, vec![
-            macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, MacroArg(1)),
-          ])
-        ]),
-        "or".to_owned() => (2, vec![
-          (BaseOp::Or, vec![
-            macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, MacroArg(1)),
-          ])
-        ]),
-        "xr".to_owned() => (2, vec![
-          (BaseOp::Xor, vec![
-            macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, MacroArg(1)),
-          ])
-        ]),
-        "sr".to_owned() => (2, vec![
-          (BaseOp::ShiftRight, vec![
-            macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, MacroArg(1)),
-          ])
-        ]),
-        "sl".to_owned() => (2, vec![
-          (BaseOp::ShiftLeft, vec![
-            macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, MacroArg(1)),
-          ])
-        ]),
-        "sa".to_owned() => (2, vec![
-          (BaseOp::ShiftArithmetic, vec![
-            macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, MacroArg(1)),
-          ])
-        ]),
-        "jg".to_owned() => (3, vec![
-          (BaseOp::JumpGreater, vec![
-            macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, MacroArg(1)),
-            macro_op_arg!(lexer, MacroArg(2)),
-          ])
-        ]),
-        "jl".to_owned() => (3, vec![
-          (BaseOp::JumpLesser, vec![
-            macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, MacroArg(1)),
-            macro_op_arg!(lexer, MacroArg(2)),
-          ])
-        ]),
-        "jq".to_owned() => (3, vec![
-          (BaseOp::JumpEqual, vec![
-            macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, MacroArg(1)),
-            macro_op_arg!(lexer, MacroArg(2)),
-          ])
-        ]),
-        "hf".to_owned() => (0, vec![
-          (BaseOp::JumpEqual, vec![
-            macro_op_arg!(lexer, Number(REG_IP)),
-            macro_op_arg!(lexer, Number(REG_IP)),
-            macro_op_arg!(lexer, Here),
-          ]),
-        ]),
-        "jm".to_owned() => (1, vec![
-          (BaseOp::Move, vec![
-            macro_op_arg!(lexer, Number(REG_IP)),
-            macro_op_arg!(lexer, MacroArg(0)),
-          ]),
-        ]),
-        "ji".to_owned() => (1, vec![
-          (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(lexer, Number(REG_IP)),
-            macro_op_arg!(lexer, MacroArg(0))
-          ]),
-        ]),
-        "inc".to_owned() => (1, vec![
-          (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(lexer, Number(REG_SC)),
-            macro_op_arg!(lexer, Number(1))
-          ]),
-          (BaseOp::Add, vec![
-            macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, Number(REG_SC)),
-          ]),
-        ]),
-        "dec".to_owned() => (1, vec![
-          (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(lexer, Number(REG_SC)),
-            macro_op_arg!(lexer, Number(1)),
-          ]),
-          (BaseOp::Sub, vec![
-            macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, Number(REG_SC)),
-          ]),
-        ]),
-        "neg".to_owned() => (1, vec![
-          (BaseOp::Move, vec![
-            macro_op_arg!(lexer, Number(REG_SC)),
-            macro_op_arg!(lexer, MacroArg(0)),
-          ]),
-          (BaseOp::Xor, vec![
-            macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, MacroArg(0)),
-          ]),
-          (BaseOp::Move, vec![
-            macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, Number(REG_SC)),
-          ]),
-        ]),
-        "adi".to_owned() => (2, vec![
-          (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(lexer, Number(REG_SC)),
-            macro_op_arg!(lexer, MacroArg(1)),
-          ]),
-          (BaseOp::Add, vec![
-            macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, Number(REG_SC)),
-          ]),
-        ]),
-        "sbi".to_owned() => (2, vec![
-          (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(lexer, Number(REG_SC)),
-            macro_op_arg!(lexer, MacroArg(1)),
-          ]),
-          (BaseOp::Sub, vec![
-            macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, Number(REG_SC)),
-          ]),
-        ]),
-        "push".to_owned() => (1, vec![
-          (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(lexer, Number(REG_SC)),
-            macro_op_arg!(lexer, Number(1)),
-          ]),
-          (BaseOp::Add, vec![
-            macro_op_arg!(lexer, Number(REG_SP)),
-            macro_op_arg!(lexer, Number(REG_SC)),
-          ]),
-          (BaseOp::Load, vec![
-            macro_op_arg!(lexer, Number(REG_SP)),
-            macro_op_arg!(lexer, MacroArg(0)),
-          ]),
-        ]),
-        "pop".to_owned() => (1, vec![
-          (BaseOp::MoveDeref, vec![
-            macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, Number(REG_SP)),
-          ]),
-          (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(lexer, Number(REG_SC)),
-            macro_op_arg!(lexer, Number(1)),
-          ]),
-          (BaseOp::Sub, vec![
-            macro_op_arg!(lexer, Number(REG_SP)),
-            macro_op_arg!(lexer, Number(REG_SC)),
-          ]),
-        ]),
-        "call".to_owned() => (1, vec![
-          (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(lexer, Number(REG_SC)),
-            macro_op_arg!(lexer, Number(1)),
-          ]),
-          (BaseOp::Add, vec![
-            macro_op_arg!(lexer, Number(REG_SP)),
-            macro_op_arg!(lexer, Number(REG_SC)),
-          ]),
-          (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(lexer, Number(REG_SC)),
-            macro_op_arg!(lexer, ArithOp(
-              lexer::ArithOp::Add,
-              Box::new(macro_op_arg!(lexer, Here)),
-              Box::new(macro_op_arg!(lexer, Number(6))),
-            )),
-          ]),
-          (BaseOp::Load, vec![
-            macro_op_arg!(lexer, Number(REG_SP)),
-            macro_op_arg!(lexer, Number(REG_SC)),
-          ]),
-          (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(lexer, Number(REG_IP)),
-            macro_op_arg!(lexer, MacroArg(0)),
-          ])
-        ]),
-        "ret".to_owned() => (0, vec![
-          (BaseOp::MoveDeref, vec![
-            macro_op_arg!(lexer, Number(REG_SC2)),
-            macro_op_arg!(lexer, Number(REG_SP)),
-          ]),
-          (BaseOp::MoveImmediate, vec![
-            macro_op_arg!(lexer, Number(REG_SC)),
-            macro_op_arg!(lexer, Number(1)),
-          ]),
-          (BaseOp::Sub, vec![
-            macro_op_arg!(lexer, Number(REG_SP)),
-            macro_op_arg!(lexer, Number(REG_SC)),
-          ]),
-          (BaseOp::Move, vec![
-            macro_op_arg!(lexer, Number(REG_IP)),
-            macro_op_arg!(lexer, Number(REG_SC2)),
-          ])
-        ]),
-      },
+      macros: hashmap! {},
       idx: 0,
     };
 
     this.get_directives(&mut vec![path], lexer);
 
     // normal labels
-    let mut inst_offset = INST_OFFSET_BASE;
+    let mut inst_offset = CODE_START;
     for dir in &this.directives {
       match dir.var {
         DirectiveVar::Label(ref s, ref _public) => {
@@ -344,7 +210,8 @@ impl Parser {
         DirectiveVar::Op(ref op, _) =>
           inst_offset += this.size_of_op_str(&dir.pos, op),
         DirectiveVar::Const(..) => {}
-        DirectiveVar::Data(ref data) => inst_offset += data.len() as u16,
+        DirectiveVar::Data(ref data) => inst_offset += (data.len() * 2) as u16,
+        DirectiveVar::ByteData(ref data) => inst_offset += data.len() as u16,
         DirectiveVar::Public(_) => {
           // TODO(ubsan): silently ignored for now
         },
@@ -354,7 +221,7 @@ impl Parser {
     }
 
     // equ constants
-    let mut inst_offset = INST_OFFSET_BASE;
+    let mut inst_offset = CODE_START;
     for dir in &this.directives {
       match dir.var {
         DirectiveVar::Label(..) => {}
@@ -369,7 +236,8 @@ impl Parser {
             None => {},
           }
         }
-        DirectiveVar::Data(ref data) => inst_offset += data.len() as u16,
+        DirectiveVar::Data(ref data) => inst_offset += (data.len() * 2) as u16,
+        DirectiveVar::ByteData(ref data) => inst_offset += data.len() as u16,
         DirectiveVar::Public(_) => {
           // TODO(ubsan): silently ignored for now
         },
@@ -427,25 +295,18 @@ impl Parser {
   }
 
   fn size_of_op_str(&self, pos: &Position, op: &str) -> u16 {
-    match self.macros.get(op) {
-      Some(&(_, ref ops)) => {
-        let mut acc = 0;
-        for &(ref op, ref _args) in ops {
-          acc += self.size_of_op(*op);
+    match Opcode::from_str(op) {
+      Some(op) => op.size(),
+      None => match self.macros.get(op) {
+        Some(&(_, ref ops)) => {
+          let mut acc = 0;
+          for &(ref op, ref _args) in ops {
+            acc += op.size();
+          }
+          acc
         }
-        acc
+        None => error!(pos, "Unknown opcode: {}", op),
       }
-      None => error!(pos, "Unknown opcode: {}", op),
-    }
-  }
-
-  fn size_of_op(&self, op: BaseOp) -> u16 {
-    match op {
-      BaseOp::MoveImmediate | BaseOp::Move | BaseOp::MoveDeref | BaseOp::Load
-      | BaseOp::Store | BaseOp::Add | BaseOp::Sub | BaseOp::And | BaseOp::Or
-      | BaseOp::Xor | BaseOp::ShiftRight | BaseOp::ShiftLeft
-      | BaseOp::ShiftArithmetic => 2,
-      BaseOp::JumpGreater | BaseOp::JumpLesser | BaseOp::JumpEqual => 3,
     }
   }
 
@@ -464,109 +325,86 @@ impl Parser {
 }
 
 impl Iterator for Parser {
-  type Item = Opcode;
+  type Item = Instruction;
 
-  fn next(&mut self) -> Option<Opcode> {
+  fn next(&mut self) -> Option<Instruction> {
     fn arith(
-      this: &Parser,
-      op: OpcodeVariant,
-      args: &[OpArg],
-      mac_args: &[OpArg],
-    ) -> (Opcode, u16) {
+      this: &Parser, op: Opcode, args: &[OpArg], mac_args: &[OpArg],
+    ) -> (Instruction, u16) {
       let reg = args[0].evaluate(&this.labels, mac_args, this.inst_offset);
-      if reg >= 0x1000 {
+      if reg >= CODE_START {
         error!(
           mac_args[0].pos, "Register memory is out of range: {}", reg,
         );
       }
-      let num = args[1].evaluate(&this.labels, mac_args, this.inst_offset);
-      (Opcode {
-        var: op,
+      let imm = args[1].evaluate(&this.labels, mac_args, this.inst_offset);
+      (Instruction::Arith {
+        op: op,
         reg: reg,
-        num: num,
-      }, 2)
+        imm: imm,
+      }, 4)
     }
     fn jump(
-      this: &Parser,
-      op: fn(u16) -> OpcodeVariant,
-      args: &[OpArg],
-      mac_args: &[OpArg],
-    ) -> (Opcode, u16) {
+      this: &Parser, op: Opcode, args: &[OpArg], mac_args: &[OpArg],
+    ) -> (Instruction, u16) {
       let reg = args[0].evaluate(&this.labels, mac_args, this.inst_offset);
-      if reg >= 0x1000 {
+      if reg >= CODE_START {
         error!(
           mac_args[0].pos, "Register memory is out of range: {}", reg,
         );
       }
-      let num = args[1].evaluate(&this.labels, mac_args, this.inst_offset);
+      let imm = args[1].evaluate(&this.labels, mac_args, this.inst_offset);
       let label = args[2].evaluate(&this.labels, mac_args, this.inst_offset);
-      (Opcode {
-        var: op(label),
+      (Instruction::Jump {
+        op: op,
         reg: reg,
-        num: num,
-      }, 3)
+        imm: imm,
+        label: label,
+      }, 6)
     }
-    fn data(this: &Parser, data: Vec<OpArg>) -> (Opcode, u16) {
+    fn data(this: &Parser, data: Vec<OpArg>) -> (Instruction, u16) {
       let mut data_num = Vec::new();
       // heh. datum.
       for datum in data {
         data_num.push(datum.evaluate(&this.labels, &[], this.inst_offset))
       }
+      let offset = (data_num.len() * 2) as u16;
+      (Instruction::Data(data_num), offset)
+    }
+    fn byte_data(this: &Parser, data: Vec<OpArg>) -> (Instruction, u16) {
+      let mut data_num = Vec::new();
+      for datum in data {
+        data_num.push(datum.evaluate_u8(&this.labels, &[], this.inst_offset))
+      }
+      if data_num.len() % 2 != 0 {
+        data_num.push(0);
+      }
       let offset = data_num.len() as u16;
-      (Opcode {
-        var: OpcodeVariant::Data(data_num),
-        reg: 0,
-        num: 0,
-      }, offset)
+      (Instruction::ByteData(data_num), offset)
     }
     // the u16 is the inst_offset to add
     fn opcode(
-      this: &Parser, op: &BaseOp, args: &[OpArg], mac_args: &[OpArg],
-    ) -> (Opcode, u16) {
-      match *op {
-        BaseOp::MoveImmediate =>
-          arith(this, OpcodeVariant::MoveImmediate, args, &mac_args),
-        BaseOp::Move => arith(this, OpcodeVariant::Move, args, &mac_args),
-        BaseOp::MoveDeref =>
-          arith(this, OpcodeVariant::MoveDeref, args, &mac_args),
-        BaseOp::Load => arith(this, OpcodeVariant::Load, args, &mac_args),
-        BaseOp::Store => arith(this, OpcodeVariant::Store, args, &mac_args),
-        BaseOp::Add => arith(this, OpcodeVariant::Add, args, &mac_args),
-        BaseOp::Sub => arith(this, OpcodeVariant::Sub, args, &mac_args),
-        BaseOp::And => arith(this, OpcodeVariant::And, args, &mac_args),
-        BaseOp::Or => arith(this, OpcodeVariant::Or, args, &mac_args),
-        BaseOp::Xor => arith(this, OpcodeVariant::Xor, args, &mac_args),
-        BaseOp::ShiftRight =>
-          arith(this, OpcodeVariant::ShiftRight, args, &mac_args),
-        BaseOp::ShiftLeft =>
-          arith(this, OpcodeVariant::ShiftLeft, args, &mac_args),
-        BaseOp::ShiftArithmetic =>
-          arith(this, OpcodeVariant::ShiftArithmetic, args, &mac_args),
-        BaseOp::JumpGreater =>
-          jump(this, OpcodeVariant::JumpGreater, args, &mac_args),
-        BaseOp::JumpLesser =>
-          jump(this, OpcodeVariant::JumpLesser, args, &mac_args),
-        BaseOp::JumpEqual =>
-          jump(this, OpcodeVariant::JumpEqual, args, &mac_args),
+      this: &Parser, op: Opcode, args: &[OpArg], mac_args: &[OpArg],
+    ) -> (Instruction, u16) {
+      if op.is_arith() {
+        arith(this, op, args, &mac_args)
+      } else {
+        jump(this, op, args, &mac_args)
       }
     }
 
-    let op = match self.op_buffer.get_mut(self.op_buffer_idx) {
-      Some(op) => Some(
-        ::std::mem::replace(op, Opcode {
-          var: OpcodeVariant::MoveImmediate,
-          reg: 0,
-          num: 0,
-        })
+    let op = match self.inst_buffer.get_mut(self.inst_buffer_idx) {
+      Some(inst) => Some(
+        ::std::mem::replace(inst, Instruction::Data(Vec::new()))
       ),
       None => None,
     };
     if let Some(op) = op {
-      self.op_buffer_idx += 1;
+      self.inst_buffer_idx += 1;
       return Some(op);
     } else {
-      self.op_buffer_idx = 0;
-      self.op_buffer.clear();
+      self.inst_buffer_idx = 0;
+      self.inst_buffer.clear();
     }
     if let Some(dir) = self.next_directive() {
       match dir.var {
@@ -583,20 +421,18 @@ impl Iterator for Parser {
                 )
               }
               for &(ref op, ref args) in ops {
-                let (op, offset) = opcode(self, op, args, &mac_args);
+                let (op, offset) = opcode(self, *op, args, &mac_args);
                 self.inst_offset += offset;
-                self.op_buffer.push(op);
+                self.inst_buffer.push(op);
               }
             },
             None => error!(dir.pos, "Unknown opcode"),
           }
-          if let Some(op) = self.op_buffer.get_mut(0) {
-            self.op_buffer_idx = 1;
-            return Some(::std::mem::replace(op, Opcode {
-              var: OpcodeVariant::MoveImmediate,
-              reg: 0,
-              num: 0,
-            }));
+          if let Some(inst) = self.inst_buffer.get_mut(0) {
+            self.inst_buffer_idx = 1;
+            return Some(
+              ::std::mem::replace(inst, Instruction::Data(Vec::new()))
+            );
           }
           self.next()
         },
@@ -604,7 +440,12 @@ impl Iterator for Parser {
           let (data, offset) = data(self, nums);
           self.inst_offset += offset;
           Some(data)
-        }
+        },
+        DirectiveVar::ByteData(nums) => {
+          let (data, offset) = byte_data(self, nums);
+          self.inst_offset += offset;
+          Some(data)
+        },
         DirectiveVar::Label(..) | DirectiveVar::Const(..) => {
           while let Some(dir) = self.directives.get(self.idx) {
             match dir.var {
