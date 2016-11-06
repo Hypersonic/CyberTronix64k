@@ -11,8 +11,10 @@ const INST_OFFSET_BASE: u16 = 0x1000;
 const REG_IP: u16 = 0x0;
 const REG_SP: u16 = 0x1;
 const REG_BP: u16 = 0x2;
-const REG_SC: u16 = 0x3;
-const REG_SC2: u16 = 0x4;
+const REG_SC0: u16 = 0x3;
+const REG_SC1: u16 = 0x4;
+const REG_SC2: u16 = 0x5;
+const REG_SC3: u16 = 0x6;
 
 #[derive(Copy, Clone)]
 enum BaseOp {
@@ -75,7 +77,10 @@ impl Parser {
         "ip".to_owned() => REG_IP,
         "sp".to_owned() => REG_SP,
         "bp".to_owned() => REG_BP,
-        "sc".to_owned() => REG_SC,
+        "sc0".to_owned() => REG_SC0,
+        "sc1".to_owned() => REG_SC1,
+        "sc2".to_owned() => REG_SC2,
+        "sc3".to_owned() => REG_SC3,
       },
       macros: hashmap! {
         "mi".to_owned() => (2, vec![
@@ -184,16 +189,16 @@ impl Parser {
             macro_op_arg!(lexer, Here),
           ]),
         ]),
-        "jm".to_owned() => (1, vec![
-          (BaseOp::Move, vec![
-            macro_op_arg!(lexer, Number(REG_IP)),
-            macro_op_arg!(lexer, MacroArg(0)),
-          ]),
-        ]),
         "ji".to_owned() => (1, vec![
           (BaseOp::MoveImmediate, vec![
             macro_op_arg!(lexer, Number(REG_IP)),
             macro_op_arg!(lexer, MacroArg(0))
+          ]),
+        ]),
+        "jm".to_owned() => (1, vec![
+          (BaseOp::Move, vec![
+            macro_op_arg!(lexer, Number(REG_IP)),
+            macro_op_arg!(lexer, MacroArg(0)),
           ]),
         ]),
         "inc".to_owned() => (1, vec![
@@ -221,11 +226,11 @@ impl Parser {
             macro_op_arg!(lexer, Number(REG_SC)),
             macro_op_arg!(lexer, MacroArg(0)),
           ]),
-          (BaseOp::Xor, vec![
+          (BaseOp::MoveImmediate, vec![
             macro_op_arg!(lexer, MacroArg(0)),
-            macro_op_arg!(lexer, MacroArg(0)),
+            macro_op_arg!(lexer, Number(0)),
           ]),
-          (BaseOp::Move, vec![
+          (BaseOp::Sub, vec![
             macro_op_arg!(lexer, MacroArg(0)),
             macro_op_arg!(lexer, Number(REG_SC)),
           ]),
