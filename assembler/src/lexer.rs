@@ -403,7 +403,7 @@ impl Lexer {
           if ch == b'#' && c == b'-' {
             self.get_char();
             self.block_comment();
-            self.next_token();
+            return self.next_token();
           }
         }
         while let Some(c) = self.peek_char() {
