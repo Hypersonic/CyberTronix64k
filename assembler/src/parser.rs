@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use Instruction;
 
 use lexer::{
-  Directive, DirectiveVar, Lexer, OpArg, Position, Public,
+  Directive, DirectiveVar, Lexer, OpArg, OpArgVar, Position, Public,
 };
 
 const CODE_START: u16 = 0x400;
@@ -46,20 +46,20 @@ pub struct Opcode {
 impl Opcode {
   pub fn from_str(s: &str) -> Option<Opcode> {
     Some(match s {
-      "mvi" => Opcode { base: BaseOp::Mvi, bits16: true, imm: false },
-      "mvib" => Opcode { base: BaseOp::Mvi, bits16: false, imm: false },
-      "ldi" => Opcode { base: BaseOp::Mvi, bits16: true, imm: true },
-      "ldbi" => Opcode { base: BaseOp::Mvi, bits16: false, imm: true },
+      "mi" => Opcode { base: BaseOp::Mvi, bits16: true, imm: false },
+      "mib" => Opcode { base: BaseOp::Mvi, bits16: false, imm: false },
+      "li" => Opcode { base: BaseOp::Mvi, bits16: true, imm: true },
+      "lib" => Opcode { base: BaseOp::Mvi, bits16: false, imm: true },
 
-      "mv" => Opcode { base: BaseOp::Mv, bits16: true, imm: false },
-      "mvb" => Opcode { base: BaseOp::Mv, bits16: false, imm: false },
-      "ld" => Opcode { base: BaseOp::Mv, bits16: true, imm: true },
-      "ldb" => Opcode { base: BaseOp::Mv, bits16: false, imm: true },
+      "mm" => Opcode { base: BaseOp::Mv, bits16: true, imm: false },
+      "mmb" => Opcode { base: BaseOp::Mv, bits16: false, imm: false },
+      "lm" => Opcode { base: BaseOp::Mv, bits16: true, imm: true },
+      "lmb" => Opcode { base: BaseOp::Mv, bits16: false, imm: true },
 
-      "mvd" => Opcode { base: BaseOp::Mvd, bits16: true, imm: false },
-      "mvdb" => Opcode { base: BaseOp::Mvd, bits16: false, imm: false },
-      "ldd" => Opcode { base: BaseOp::Mvd, bits16: true, imm: true },
-      "ldbd" => Opcode { base: BaseOp::Mvd, bits16: false, imm: true },
+      "md" => Opcode { base: BaseOp::Mvd, bits16: true, imm: false },
+      "mdb" => Opcode { base: BaseOp::Mvd, bits16: false, imm: false },
+      "ld" => Opcode { base: BaseOp::Mvd, bits16: true, imm: true },
+      "ldb" => Opcode { base: BaseOp::Mvd, bits16: false, imm: true },
 
       "nd" => Opcode { base: BaseOp::And, bits16: true, imm: false },
       "ndb" => Opcode { base: BaseOp::And, bits16: false, imm: false },
@@ -132,39 +132,20 @@ impl Opcode {
 
   pub fn to_u16(self) -> u16 {
     self.base as u16
-      | (self.bits16 as u16) << 4
+      | ((!self.bits16) as u16) << 4
       | (self.imm as u16) << 5
   }
 
   pub fn size(&self) -> u16 {
     if self.is_arith() {
-      2
+      4
     } else {
-      3
+      6
     }
   }
 
   pub fn is_arith(&self) -> bool {
     (self.base as u16) < (BaseOp::Jl as u16)
-  }
-
-  fn args(&self) -> &'static [OpArg] {
-    static ARGS: &'static [OpArg] = &[
-      OpArg {
-        var: OpArgVar::MacroArg(0),
-        pos: lexer.compiler_defined_pos(),
-      },
-      OpArg {
-        var: OpArgVar::MacroArg(1),
-        pos: lexer.compiler_defined_pos(),
-      },
-      OpArg {
-        var: OpArgVar::MacroArg(2),
-        pos: lexer.compiler_defined_pos(),
-      },
-    ];
-    if self.is_arith() {
-    }
   }
 }
 
@@ -177,25 +158,12 @@ pub struct Parser {
   labels: HashMap<String, u16>,
   macros: HashMap<String, (u16, Vec<(Opcode, Vec<OpArg>)>)>,
   idx: usize,
+
+  opcode_args: [OpArg; 3],
 }
 
 impl Parser {
   pub fn new(filename: &str) -> Self {
-    // compiler_defined_pos
-    macro_rules! macro_op_arg {
-      ($lexer:expr, $var:ident) => (
-        OpArg {
-          var: OpArgVar::$var,
-          pos: $lexer.compiler_defined_pos(),
-        }
-      );
-      ($lexer:expr, $var:ident ($($arg:tt)*)) => (
-        OpArg {
-          var: OpArgVar::$var($($arg)*),
-          pos: $lexer.compiler_defined_pos(),
-        }
-      );
-    }
     let path: PathBuf = match Path::new(filename).canonicalize() {
       Ok(c) => c,
       Err(_) => error_np!("Unable to open file: {}", filename),
@@ -217,6 +185,21 @@ impl Parser {
       },
       macros: hashmap! {},
       idx: 0,
+
+      opcode_args: [
+        OpArg {
+          var: OpArgVar::MacroArg(0),
+          pos: lexer.compiler_defined_pos(),
+        },
+        OpArg {
+          var: OpArgVar::MacroArg(1),
+          pos: lexer.compiler_defined_pos(),
+        },
+        OpArg {
+          var: OpArgVar::MacroArg(2),
+          pos: lexer.compiler_defined_pos(),
+        },
+      ],
     };
 
     this.get_directives(&mut vec![path], lexer);
@@ -361,7 +344,7 @@ impl Iterator for Parser {
       let reg = args[0].evaluate(&this.labels, mac_args, this.inst_offset);
       if reg >= CODE_START {
         error!(
-          mac_args[0].pos, "Register memory is out of range: {}", reg,
+          mac_args[0].pos, "Register memory is out of range: 0x{:X}", reg,
         );
       }
       let imm = args[1].evaluate(&this.labels, mac_args, this.inst_offset);
@@ -377,7 +360,7 @@ impl Iterator for Parser {
       let reg = args[0].evaluate(&this.labels, mac_args, this.inst_offset);
       if reg >= CODE_START {
         error!(
-          mac_args[0].pos, "Register memory is out of range: {}", reg,
+          mac_args[0].pos, "Register memory is out of range: 0x{:X}", reg,
         );
       }
       let imm = args[1].evaluate(&this.labels, mac_args, this.inst_offset);
@@ -433,11 +416,16 @@ impl Iterator for Parser {
       self.inst_buffer_idx = 0;
       self.inst_buffer.clear();
     }
+
     if let Some(dir) = self.next_directive() {
       match dir.var {
         DirectiveVar::Op(op, mac_args) => {
           if let Some(op) = Opcode::from_str(&op) {
-            let (op, offset) = opcode(self, op, , &mac_args);
+            let (op, offset) = if op.is_arith() {
+              opcode(self, op, &self.opcode_args[0..2], &mac_args)
+            } else {
+              opcode(self, op, &self.opcode_args[0..3], &mac_args)
+            };
             self.inst_offset += offset;
             self.inst_buffer.push(op);
           } else {

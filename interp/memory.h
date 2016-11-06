@@ -34,14 +34,14 @@ public:
     // access methods
     uint16_t load16(uint16_t idx) const {
         if (idx % 2 != 0) {
-            fprintf(stderr, "Exception: unaligned read (%x)\n", idx);
+            fprintf(stderr, "Exception: unaligned read (0x%X)\n", idx);
             std::terminate();
         }
         return mem_[idx] | (mem_[idx + 1] << 8);
     }
     void store16(uint16_t idx, uint16_t load) {
         if (idx % 2 != 0) {
-            fprintf(stderr, "Exception: unaligned write (%x)\n", idx);
+            fprintf(stderr, "Exception: unaligned write (0x%X)\n", idx);
             std::terminate();
         }
         mem_[idx] = load & 255;
@@ -60,5 +60,5 @@ public:
         mem_[idx] = load & 255;
     }
 
-    char mem_[MEM_SIZE] = {0};
+    uint8_t mem_[MEM_SIZE] = {0};
 };

@@ -11,7 +11,7 @@
 
 // macro to print instruction traces, + ip
 #ifdef DO_TRACE
-#  define P_TRACE(fmt, ...) fprintf(stderr, "0x%04x: " fmt "\n", ip, __VA_ARGS__)
+#  define P_TRACE(fmt, ...) fprintf(stderr, "%04x: " fmt "\n", ip, __VA_ARGS__)
 #else
 #  define P_TRACE(fmt, ...)
 #endif
@@ -19,22 +19,22 @@
 
 class Opcode {
   enum class BaseOp: uint8_t {
-    Mvi = 0x0,
-    Mv = 0x1,
-    Mvd = 0x2,
-    And = 0x3,
-    Or  = 0x4,
-    Xor = 0x5,
-    Add = 0x6,
-    Sub = 0x7,
-    Shr = 0x8,
-    Shl = 0x9,
-    Sha = 0xA,
-    Jl  = 0xB,
-    Jg  = 0xC,
-    Jb  = 0xD,
-    Ja  = 0xE,
-    Jq  = 0xF
+    Mi = 0x0,
+    Mm = 0x1,
+    Md = 0x2,
+    Nd = 0x3,
+    Or = 0x4,
+    Xr = 0x5,
+    Ad = 0x6,
+    Sb = 0x7,
+    Sr = 0x8,
+    Sl = 0x9,
+    Sa = 0xA,
+    Jl = 0xB,
+    Jg = 0xC,
+    Jb = 0xD,
+    Ja = 0xE,
+    Jq = 0xF
   };
 
   BaseOp base_;
@@ -59,198 +59,200 @@ public:
   void operator()(Memory& memory) {
     auto ip = memory.load16(REG_IP);
     auto reg = get_reg(memory.load16(ip));
-    auto arg1 = get_reg(memory.load16(ip + 2));
+    auto arg1 = memory.load16(ip + 2);
+
+    memory.store16(REG_IP, ip + 4);
     switch (base_) {
-      case BaseOp::Mvi: {
+      case BaseOp::Mi: {
         if (bits16_) {
-          if (!imm_) { P_TRACE("mvi 0x%X, 0x%X", reg, arg1);
+          if (!imm_) { P_TRACE("mi 0x%X, 0x%X", reg, arg1);
             memory.store16(reg, arg1);
-          } else { P_TRACE("ldi (0x%X), 0x%X", reg, arg1);
+          } else { P_TRACE("li 0x%X, 0x%X", reg, arg1);
             memory.store16(memory.load16(reg), arg1);
           }
         } else {
           if (!imm_) {
             if (reg == 0 && arg1 == 0) {
-              P_TRACE("mvib 0x%X, 0x%X (hcf)", reg, arg1);
+              P_TRACE("mib 0x%X, 0x%X (hcf)", reg, arg1);
               printf("HCF instruction reached\n");
               std::exit(0);
             }
-            P_TRACE("mvib 0x%X, 0x%X", reg, arg1);
+            P_TRACE("mib 0x%X, 0x%X", reg, arg1);
             memory.store8(reg, uint8_t(arg1));
-          } else { P_TRACE("ldib 0x%X, 0x%X", reg, arg1);
+          } else { P_TRACE("lib 0x%X, 0x%X", reg, arg1);
             memory.store8(memory.load16(reg), uint8_t(arg1));
           }
         }
       } break;
-      case BaseOp::Mv: {
+      case BaseOp::Mm: {
         if (bits16_) {
-          if (!imm_) { P_TRACE("mv 0x%X, 0x%X", reg, arg1);
+          if (!imm_) { P_TRACE("mm 0x%X, 0x%X", reg, arg1);
             memory.store16(reg, memory.load16(arg1));
-          } else { P_TRACE("ld 0x%X, 0x%X", reg, arg1);
+          } else { P_TRACE("lm 0x%X, 0x%X", reg, arg1);
             memory.store16(memory.load16(reg), memory.load16(arg1));
           }
         } else {
-          if (!imm_) { P_TRACE("mvb 0x%X, 0x%X", reg, arg1);
+          if (!imm_) { P_TRACE("mmb 0x%X, 0x%X", reg, arg1);
             memory.store8(reg, memory.load8(arg1));
-          } else { P_TRACE("ldb (0x%X), 0x%X", reg, arg1);
+          } else { P_TRACE("lmb 0x%X, 0x%X", reg, arg1);
             memory.store8(memory.load16(reg), memory.load8(arg1));
           }
         }
       } break;
-      case BaseOp::Mvd: {
+      case BaseOp::Md: {
         if (bits16_) {
-          if (!imm_) { P_TRACE("mvd 0x%X, 0x%X", reg, arg1);
+          if (!imm_) { P_TRACE("md 0x%X, 0x%X", reg, arg1);
             memory.store16(reg, memory.load16(memory.load16(arg1)));
-          } else { P_TRACE("ldd 0x%X, 0x%X", reg, arg1);
+          } else { P_TRACE("ld 0x%X, 0x%X", reg, arg1);
             memory.store16(memory.load16(reg),
               memory.load16(memory.load16(arg1)));
           }
         } else {
-          if (!imm_) { P_TRACE("mvdb 0x%X, 0x%X", reg, arg1);
+          if (!imm_) { P_TRACE("mdb 0x%X, 0x%X", reg, arg1);
             memory.store8(reg, memory.load8(memory.load16(arg1)));
-          } else { P_TRACE("lddb (0x%X), 0x%X", reg, arg1);
+          } else { P_TRACE("ldb 0x%X, 0x%X", reg, arg1);
             memory.store8(memory.load16(reg),
               memory.load8(memory.load16(arg1)));
           }
         }
       } break;
-      case BaseOp::And: {
+      case BaseOp::Nd: {
         if (bits16_) {
-          if (imm_) { P_TRACE("and 0x%X, 0x%X", reg, arg1);
+          if (imm_) { P_TRACE("ndi 0x%X, 0x%X", reg, arg1);
             memory.store16(reg, memory.load16(reg) & arg1);
-          } else { P_TRACE("and 0x%X, (0x%X)", reg, arg1);
+          } else { P_TRACE("nd 0x%X, 0x%X", reg, arg1);
             memory.store16(reg, memory.load16(reg) & memory.load16(arg1));
           }
         } else {
-          if (imm_) { P_TRACE("andb 0x%X, 0x%X", reg, arg1);
+          if (imm_) { P_TRACE("ndbi 0x%X, 0x%X", reg, arg1);
             memory.store8(reg, memory.load8(reg) & uint8_t(arg1));
-          } else { P_TRACE("andb 0x%X, (0x%X)", reg, arg1);
+          } else { P_TRACE("ndb 0x%X, 0x%X", reg, arg1);
             memory.store8(reg, memory.load8(reg) & memory.load8(arg1));
           }
         }
       } break;
       case BaseOp::Or: {
         if (bits16_) {
-          if (imm_) { P_TRACE("or 0x%X, 0x%X", reg, arg1);
+          if (imm_) { P_TRACE("ori 0x%X, 0x%X", reg, arg1);
             memory.store16(reg, memory.load16(reg) | arg1);
-          } else { P_TRACE("or 0x%X, (0x%X)", reg, arg1);
+          } else { P_TRACE("or 0x%X, 0x%X", reg, arg1);
             memory.store16(reg, memory.load16(reg) | memory.load16(arg1));
           }
         } else {
-          if (imm_) { P_TRACE("orb 0x%X, 0x%X", reg, arg1);
+          if (imm_) { P_TRACE("orbi 0x%X, 0x%X", reg, arg1);
             memory.store8(reg, memory.load8(reg) | uint8_t(arg1));
-          } else { P_TRACE("orb 0x%X, (0x%X)", reg, arg1);
+          } else { P_TRACE("orb 0x%X, 0x%X", reg, arg1);
             memory.store8(reg, memory.load8(reg) | memory.load8(arg1));
           }
         }
       } break;
-      case BaseOp::Xor: {
+      case BaseOp::Xr: {
         if (bits16_) {
-          if (imm_) { P_TRACE("xor 0x%X, 0x%X", reg, arg1);
+          if (imm_) { P_TRACE("xri 0x%X, 0x%X", reg, arg1);
             memory.store16(reg, memory.load16(reg) ^ arg1);
-          } else { P_TRACE("xor 0x%X, (0x%X)", reg, arg1);
+          } else { P_TRACE("xr 0x%X, 0x%X", reg, arg1);
             memory.store16(reg, memory.load16(reg) ^ memory.load16(arg1));
           }
         } else {
-          if (imm_) { P_TRACE("xorb 0x%X, 0x%X", reg, arg1);
+          if (imm_) { P_TRACE("xrbi 0x%X, 0x%X", reg, arg1);
             memory.store8(reg, memory.load8(reg) ^ uint8_t(arg1));
-          } else { P_TRACE("xorb 0x%X, (0x%X)", reg, arg1);
+          } else { P_TRACE("xrb 0x%X, 0x%X", reg, arg1);
             memory.store8(reg, memory.load8(reg) ^ memory.load8(arg1));
           }
         }
       } break;
-      case BaseOp::Add: {
+      case BaseOp::Ad: {
         if (bits16_) {
-          if (imm_) { P_TRACE("add 0x%X, 0x%X", reg, arg1);
+          if (imm_) { P_TRACE("adi 0x%X, 0x%X", reg, arg1);
             memory.store16(reg, memory.load16(reg) + arg1);
-          } else { P_TRACE("add 0x%X, (0x%X)", reg, arg1);
+          } else { P_TRACE("ad 0x%X, 0x%X", reg, arg1);
             memory.store16(reg, memory.load16(reg) + memory.load16(arg1));
           }
         } else {
-          if (imm_) { P_TRACE("addb 0x%X, 0x%X", reg, arg1);
+          if (imm_) { P_TRACE("adb 0x%X, 0x%X", reg, arg1);
             memory.store8(reg, memory.load8(reg) + uint8_t(arg1));
-          } else { P_TRACE("addb 0x%X, (0x%X)", reg, arg1);
+          } else { P_TRACE("adbi 0x%X, 0x%X", reg, arg1);
             memory.store8(reg, memory.load8(reg) + memory.load8(arg1));
           }
         }
       } break;
-      case BaseOp::Sub: {
+      case BaseOp::Sb: {
         if (bits16_) {
-          if (imm_) { P_TRACE("sub 0x%X, 0x%X", reg, arg1);
+          if (imm_) { P_TRACE("sbi 0x%X, 0x%X", reg, arg1);
             memory.store16(reg, memory.load16(reg) - arg1);
-          } else { P_TRACE("sub 0x%X, (0x%X)", reg, arg1);
+          } else { P_TRACE("sb 0x%X, 0x%X", reg, arg1);
             memory.store16(reg, memory.load16(reg) - memory.load16(arg1));
           }
         } else {
-          if (imm_) { P_TRACE("subb 0x%X, 0x%X", reg, arg1);
+          if (imm_) { P_TRACE("sbbi 0x%X, 0x%X", reg, arg1);
             memory.store8(reg, memory.load8(reg) - uint8_t(arg1));
-          } else { P_TRACE("subb 0x%X, (0x%X)", reg, arg1);
+          } else { P_TRACE("sbb 0x%X, 0x%X", reg, arg1);
             memory.store8(reg, memory.load8(reg) - memory.load8(arg1));
           }
         }
       } break;
-      case BaseOp::Shr: {
+      case BaseOp::Sr: {
         if (bits16_) {
-          if (imm_) { P_TRACE("shr 0x%X, 0x%X", reg, arg1);
+          if (imm_) { P_TRACE("sri 0x%X, 0x%X", reg, arg1);
             memory.store16(reg, memory.load16(reg) >> arg1 & 15);
-          } else { P_TRACE("shr 0x%X, (0x%X)", reg, arg1);
+          } else { P_TRACE("sr 0x%X, 0x%X", reg, arg1);
             memory.store16(reg,
               memory.load16(reg) >> memory.load8(arg1) & 15);
           }
         } else {
-          if (imm_) { P_TRACE("shrb 0x%X, 0x%X", reg, arg1);
+          if (imm_) { P_TRACE("srbi 0x%X, 0x%X", reg, arg1);
             memory.store8(reg, memory.load8(reg) >> arg1 & 7);
-          } else { P_TRACE("shrb 0x%X, (0x%X)", reg, arg1);
+          } else { P_TRACE("srb 0x%X, 0x%X", reg, arg1);
             memory.store8(reg,
               memory.load8(reg) >> memory.load8(arg1) & 7);
           }
         }
       } break;
-      case BaseOp::Shl: {
+      case BaseOp::Sl: {
         if (bits16_) {
-          if (imm_) { P_TRACE("shl 0x%X, 0x%X", reg, arg1);
+          if (imm_) { P_TRACE("sli 0x%X, 0x%X", reg, arg1);
             memory.store16(reg, memory.load16(reg) << arg1 & 15);
-          } else { P_TRACE("shl 0x%X, (0x%X)", reg, arg1);
+          } else { P_TRACE("sl 0x%X, 0x%X", reg, arg1);
             memory.store16(reg,
               memory.load16(reg) << memory.load8(arg1) & 15);
           }
         } else {
-          if (imm_) { P_TRACE("shlb 0x%X, 0x%X", reg, arg1);
+          if (imm_) { P_TRACE("slbi 0x%X, 0x%X", reg, arg1);
             memory.store8(reg, memory.load8(reg) << arg1 & 7);
-          } else { P_TRACE("shlb 0x%X, (0x%X)", reg, arg1);
+          } else { P_TRACE("slb 0x%X, 0x%X", reg, arg1);
             memory.store8(reg,
               memory.load8(reg) << memory.load8(arg1) & 7);
           }
         }
       } break;
-      case BaseOp::Sha: {
+      case BaseOp::Sa: {
         if (bits16_) {
-          if (imm_) { P_TRACE("sha 0x%X, 0x%X", reg, arg1);
+          if (imm_) { P_TRACE("sai 0x%X, 0x%X", reg, arg1);
             memory.store16(reg, uint16_t(
                 int16_t(memory.load16(reg)) >> arg1 & 15));
-          } else { P_TRACE("sha 0x%X, (0x%X)", reg, arg1);
+          } else { P_TRACE("sa 0x%X, 0x%X", reg, arg1);
             memory.store16(reg, uint16_t(
                 int16_t(memory.load16(reg))
                 >> memory.load8(arg1) & 15));
           }
         } else {
-          if (imm_) { P_TRACE("shab 0x%X, 0x%X", reg, arg1);
+          if (imm_) { P_TRACE("sabi 0x%X, 0x%X", reg, arg1);
             memory.store8(reg, uint8_t(
                 int8_t(memory.load8(reg)) >> arg1 & 7));
-          } else { P_TRACE("shab 0x%X, (0x%X)", reg, arg1);
+          } else { P_TRACE("sab 0x%X, 0x%X", reg, arg1);
             memory.store8(reg, uint8_t(
                 int8_t(memory.load8(reg)) >> memory.load8(arg1) & 7));
           }
         }
       } break;
       case BaseOp::Jl: {
-        uint16_t label = memory.load16(ip + 4);
+        auto label = memory.load16(ip + 4); ip += 2;
         if (bits16_) {
-          if (imm_) { P_TRACE("jle 0x%X, 0x%X, 0x%X", reg, arg1, label);
+          if (imm_) { P_TRACE("jlei 0x%X, 0x%X, 0x%X", reg, arg1, label);
             if (int16_t(memory.load16(reg)) <= int16_t(arg1)) {
               memory.store16(REG_IP, label);
             }
-          } else { P_TRACE("jle 0x%X, (0x%X), 0x%X", reg, arg1, label);
+          } else { P_TRACE("jle 0x%X, 0x%X, 0x%X", reg, arg1, label);
             if (
               int16_t(memory.load16(reg)) <= int16_t(memory.load16(arg1))
             ) {
@@ -258,11 +260,11 @@ public:
             }
           }
         } else {
-          if (imm_) { P_TRACE("jl 0x%X, 0x%X, 0x%X", reg, arg1, label);
+          if (imm_) { P_TRACE("jli 0x%X, 0x%X, 0x%X", reg, arg1, label);
             if (int16_t(memory.load16(reg)) < int16_t(arg1)) {
               memory.store16(REG_IP, label);
             }
-          } else { P_TRACE("jl 0x%X, (0x%X), 0x%X", reg, arg1, label);
+          } else { P_TRACE("jl 0x%X, 0x%X, 0x%X", reg, arg1, label);
             if (
               int16_t(memory.load16(reg)) < int16_t(memory.load16(arg1))
             ) {
@@ -270,15 +272,15 @@ public:
             }
           }
         }
-      } return;  // don't hit the "ip += 4"
+      } break;
       case BaseOp::Jg: {
-        uint16_t label = memory.load16(ip + 4);
+        auto label = memory.load16(ip + 4); ip += 2;
         if (bits16_) {
-          if (imm_) { P_TRACE("jge 0x%X, 0x%X, 0x%X", reg, arg1, label);
+          if (imm_) { P_TRACE("jgei 0x%X, 0x%X, 0x%X", reg, arg1, label);
             if (int16_t(memory.load16(reg)) >= int16_t(arg1)) {
               memory.store16(REG_IP, label);
             }
-          } else { P_TRACE("jge 0x%X, (0x%X), 0x%X", reg, arg1, label);
+          } else { P_TRACE("jge 0x%X, 0x%X, 0x%X", reg, arg1, label);
             if (
               int16_t(memory.load16(reg)) >= int16_t(memory.load16(arg1))
             ) {
@@ -286,11 +288,11 @@ public:
             }
           }
         } else {
-          if (imm_) { P_TRACE("jg 0x%X, 0x%X, 0x%X", reg, arg1, label);
+          if (imm_) { P_TRACE("jgi 0x%X, 0x%X, 0x%X", reg, arg1, label);
             if (int16_t(memory.load16(reg)) > int16_t(arg1)) {
               memory.store16(REG_IP, label);
             }
-          } else { P_TRACE("jg 0x%X, (0x%X), 0x%X", reg, arg1, label);
+          } else { P_TRACE("jg 0x%X, 0x%X, 0x%X", reg, arg1, label);
             if (
               int16_t(memory.load16(reg)) > int16_t(memory.load16(arg1))
             ) {
@@ -300,23 +302,23 @@ public:
         }
       } return;
       case BaseOp::Jb: {
-        uint16_t label = memory.load16(ip + 4);
+        auto label = memory.load16(ip + 4); ip += 2;
         if (bits16_) {
-          if (imm_) { P_TRACE("jbe 0x%X, 0x%X, 0x%X", reg, arg1, label);
+          if (imm_) { P_TRACE("jbei 0x%X, 0x%X, 0x%X", reg, arg1, label);
             if (memory.load16(reg) <= arg1) {
               memory.store16(REG_IP, label);
             }
-          } else { P_TRACE("jbe 0x%X, (0x%X), 0x%X", reg, arg1, label);
+          } else { P_TRACE("jbe 0x%X, 0x%X, 0x%X", reg, arg1, label);
             if (memory.load16(reg) <= memory.load16(arg1)) {
               memory.store16(REG_IP, label);
             }
           }
         } else {
-          if (imm_) { P_TRACE("jb 0x%X, 0x%X, 0x%X", reg, arg1, label);
+          if (imm_) { P_TRACE("jbi 0x%X, 0x%X, 0x%X", reg, arg1, label);
             if (memory.load16(reg) < arg1) {
               memory.store16(REG_IP, label);
             }
-          } else { P_TRACE("jb 0x%X, (0x%X), 0x%X", reg, arg1, label);
+          } else { P_TRACE("jb 0x%X, 0x%X, 0x%X", reg, arg1, label);
             if (memory.load16(reg) < memory.load16(arg1)) {
               memory.store16(REG_IP, label);
             }
@@ -324,23 +326,23 @@ public:
         }
       } return;
       case BaseOp::Ja: {
-        uint16_t label = memory.load16(ip + 4);
+        auto label = memory.load16(ip + 4); ip += 2;
         if (bits16_) {
-          if (imm_) { P_TRACE("jae 0x%X, 0x%X, 0x%X", reg, arg1, label);
+          if (imm_) { P_TRACE("jaei 0x%X, 0x%X, 0x%X", reg, arg1, label);
             if (memory.load16(reg) >= arg1) {
               memory.store16(REG_IP, label);
             }
-          } else { P_TRACE("jae 0x%X, (0x%X), 0x%X", reg, arg1, label);
+          } else { P_TRACE("jae 0x%X, 0x%X, 0x%X", reg, arg1, label);
             if (memory.load16(reg) >= memory.load16(arg1)) {
               memory.store16(REG_IP, label);
             }
           }
         } else {
-          if (imm_) { P_TRACE("ja 0x%X, 0x%X, 0x%X", reg, arg1, label);
+          if (imm_) { P_TRACE("jai 0x%X, 0x%X, 0x%X", reg, arg1, label);
             if (memory.load16(reg) > arg1) {
               memory.store16(REG_IP, label);
             }
-          } else { P_TRACE("ja 0x%X, (0x%X), 0x%X", reg, arg1, label);
+          } else { P_TRACE("ja 0x%X, 0x%X, 0x%X", reg, arg1, label);
             if (memory.load16(reg) > memory.load16(arg1)) {
               memory.store16(REG_IP, label);
             }
@@ -348,23 +350,23 @@ public:
         }
       } return;
       case BaseOp::Jq: {
-        uint16_t label = memory.load16(ip + 4);
+        auto label = memory.load16(ip + 4); ip += 2;
         if (bits16_) {
-          if (imm_) { P_TRACE("jnq 0x%X, 0x%X, 0x%X", reg, arg1, label);
+          if (imm_) { P_TRACE("jnqi 0x%X, 0x%X, 0x%X", reg, arg1, label);
             if (memory.load16(reg) != arg1) {
               memory.store16(REG_IP, label);
             }
-          } else { P_TRACE("jnq 0x%X, (0x%X), 0x%X", reg, arg1, label);
+          } else { P_TRACE("jnq 0x%X, 0x%X, 0x%X", reg, arg1, label);
             if (memory.load16(reg) != memory.load16(arg1)) {
               memory.store16(REG_IP, label);
             }
           }
         } else {
-          if (imm_) { P_TRACE("jq 0x%X, 0x%X, 0x%X", reg, arg1, label);
+          if (imm_) { P_TRACE("jqi 0x%X, 0x%X, 0x%X", reg, arg1, label);
             if (memory.load16(reg) == arg1) {
               memory.store16(REG_IP, label);
             }
-          } else { P_TRACE("jq 0x%X, (0x%X), 0x%X", reg, arg1, label);
+          } else { P_TRACE("jq 0x%X, 0x%X, 0x%X", reg, arg1, label);
             if (memory.load16(reg) == memory.load16(arg1)) {
               memory.store16(REG_IP, label);
             }
@@ -372,7 +374,6 @@ public:
         }
       } return;
     }
-    memory.store16(REG_IP, ip + 4);
   }
 };
 
