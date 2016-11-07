@@ -1,3 +1,4 @@
+equ OUT 0x200
 equ IN  0x201
 equ ARG1  0x40
 
@@ -11,6 +12,7 @@ get_digit_input:
     MI SC, '9'
     JG ARG1, SC, get_digit_input__err
     SBI ARG1, '0'
+    MV OUT, ARG1
     HF ; TODO: ret
 
 get_digit_input__err:

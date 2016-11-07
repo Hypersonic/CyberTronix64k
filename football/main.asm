@@ -1,46 +1,108 @@
-JI start
+ji start
+import std.constants
+import std.getline
+import std.println
+import std.printhex
+import std.base64
+import std.memeq
 
-equ SC2 0x4
-equ OUT 0x200
-equ IN  0x201
+import user
+import cksum
+import swizzle
 
-; argument locations for convenience
-equ ARG1 0x40
-equ ARG2 0x41
-equ ARG3 0x42
-equ ARG4 0x43
 
 start:
-MI ARG1, menu_entries
-JI print_s ; TODO: call
-HF
+	call get_input
+	hf
 
+get_input:	
+	mi s00, password_entry_s
+	mi s01, password_entry_s_len
+	call print
+	mi s00, input_string
+	mi s01, 256
+	call getline
+	st s01, input_string_len_p
+	mi sc0, 78 ; max length of encoded data
+	jq sc0, s01, good_len
+err_bad_len:
+	mi s00, bad_len_s
+	mi s01, bad_len_s_len
+	call println
+	hf
+good_len:
+	mi s00, password
+	mi s01, input_string
+	mi s02, 26
+    call base64dec
+    call validate_cksum
+    ; mask idx to lower 16
+    mi sc0, 0b1111
+    nd user__index, sc0
+	; TODO: jump to index entry
+	ret
 
-; print proc. location of first char in s is in ARG1. s is NUL terminated
-print_s:
-print_s__loop:
-    MD SC2, ARG1
-    MI SC, 0x0
-    JQ SC, SC2, print_s__done
-    ;fallthu to print_s__cont
-print_s__cont:
-    MV OUT, SC2 ; print char
-    INC ARG1 ; advance to next character
-    JI print_s__loop
-print_s__done:
-    HF ; TODO: RET
+; returns if user cksum and password cksum match
+validate_cksum:
+    mi s00, user
+    mi s01, 25
+    call cksum
+    jq s00, password__cksum, good_cksum
+    mi s00, bad_cksum_s
+    mi s01, bad_cksum_s_len
+    call println
+    hf
+good_cksum:
+    ret
 
-; ----- Strings
-welcome_msg:
-data "Welcome to the FBTTY Management Interface" 0x0a 0x00
+password_entry_s:
+data "PASSWORD: "
 
-menu_entries:
-data "- MAKE SELECTION -"  0x0a \
-"1) ASDF" 0x0a \
-"2) POOP" 0x0a \
-"3) WAT" 0x0a \
-"4) LOL" 0x0a \
-0x00
+equ password_entry_s_len 10
 
-prompt:
-data "SELECT: " 0x0
+bad_len_s:
+data "BAD LENGTH, TERMINATING"
+
+equ bad_len_s_len 23
+
+bad_cksum_s:
+data "BAD CKSUM, TERMINATING"
+
+equ bad_cksum_s_len 22
+
+input_string:
+data rep 256 0
+
+input_string_len:
+data 0
+
+; pointer for stores
+input_string_len_p:
+data input_string_len
+
+; jump table, length 15
+jump_table:
+entry_0:  data 0x0000
+entry_1:  data 0x0000
+entry_2:  data 0x0000
+entry_3:  data 0x0000
+entry_4:  data 0x0000
+entry_5:  data 0x0000
+entry_6:  data 0x0000
+entry_7:  data 0x0000
+entry_8:  data 0x0000
+entry_9:  data 0x0000
+entry_10: data 0x0000
+entry_11: data 0x0000
+entry_12: data 0x0000
+entry_13: data 0x0000
+entry_14: data 0x0000
+
+; a struct password (importantly, directly after jumptable)
+password:
+password__cksum: data 0
+; password.data
+user:
+user__name: data rep 16 0
+user__secret: data rep 8 0
+user__index: data 0
