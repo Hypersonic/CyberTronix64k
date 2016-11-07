@@ -93,7 +93,7 @@ impl Position {
     let file = files.push(filename);
     Position {
       line: 1,
-      offset: 0,
+      offset: 1,
       file: file,
       files: files,
     }
@@ -329,23 +329,24 @@ impl Lexer {
     self.input.get(self.idx).cloned()
   }
 
-  fn get_char(&mut self) -> Option<u8> {
+  fn get_char(&mut self) -> Option<(u8, Position)> {
     match self.peek_char() {
       Some(c) => {
         self.idx += 1;
+        let pos = self.pos.clone();
         if c == b'\n' {
           self.pos.newline();
         } else {
           self.pos.next();
         }
-        Some(c)
+        Some((c, pos))
       }
       None => None,
     }
   }
 
   fn block_comment(&mut self) {
-    while let Some(c) = self.get_char() {
+    while let Some((c, _)) = self.get_char() {
       if c == b'-' {
         if let Some(b'#') = self.peek_char() {
           self.get_char();
@@ -387,210 +388,209 @@ impl Lexer {
       }
     }
 
-    match self.get_char() {
-      Some(b'\\') => {
-        let ch = self.get_char();
-        if let Some(b'\n') = ch {
+    if let Some((ch, pos)) = self.get_char() {
+      match ch {
+        b'\\' => {
+          let ch = self.get_char();
+          if let Some((b'\n', _)) = ch {
+            self.next_token()
+          } else if let Some((ch, pos)) = ch {
+            error!(pos, "Unexpected `{}' ({})", ch as char, ch)
+          } else {
+            error!(self.pos, "Unexpected EOF")
+          }
+        },
+        ch if ch == b'#' || ch == b';' => {
+          if let Some(c)  = self.peek_char() {
+            if ch == b'#' && c == b'-' {
+              self.get_char();
+              self.block_comment();
+              return self.next_token();
+            }
+          }
+          while let Some(c) = self.peek_char() {
+            if c != b'\n' { self.get_char(); }
+            else { break; }
+          }
           self.next_token()
-        } else if let Some(ch) = ch {
-          error!(self.pos, "Unexpected `{}' ({})", ch as char, ch)
-        } else {
-          error!(self.pos, "Unexpected EOF")
-        }
-      }
-      Some(ch) if ch == b'#' || ch == b';' => {
-        if let Some(c)  = self.peek_char() {
-          if ch == b'#' && c == b'-' {
-            self.get_char();
-            self.block_comment();
-            return self.next_token();
+        },
+        ch if is_space(ch) => {
+          while let Some(c) = self.peek_char() {
+            if is_space(c) { self.get_char(); }
+            else { break; }
           }
-        }
-        while let Some(c) = self.peek_char() {
-          if c != b'\n' { self.get_char(); }
-          else { break; }
-        }
-        self.next_token()
-      }
-      Some(ch) if is_space(ch) => {
-        while let Some(c) = self.peek_char() {
-          if is_space(c) { self.get_char(); }
-          else { break; }
-        }
-        self.next_token()
-      }
-      Some(b'\n') => Some(Token {
-        var: TokenVar::Newline,
-        pos: self.pos(),
-      }),
-      Some(b',') => Some(Token {
-        var: TokenVar::Comma,
-        pos: self.pos(),
-      }),
-      Some(b'$') => Some(Token {
-        var: TokenVar::Here,
-        pos: self.pos(),
-      }),
-      Some(quote) if quote == b'\'' || quote == b'"' => {
-        let pos = self.pos();
-        let mut buff = Vec::new();
-        while let Some(ch) = self.get_char() {
-          if ch == b'\\' {
-            match self.get_char() {
-              Some(b'\'') => buff.push(b'\''),
-              Some(b'"') => buff.push(b'"'),
-              Some(b'\n') => {
-                loop {
-                  if let Some(c) = self.peek_char() {
-                    if is_space(c) {
-                      self.get_char();
+          self.next_token()
+        },
+        b'\n' => Some(Token {
+          var: TokenVar::Newline,
+          pos: pos,
+        }),
+        b',' => Some(Token {
+          var: TokenVar::Comma,
+          pos: pos,
+        }),
+        b'$' => Some(Token {
+          var: TokenVar::Here,
+          pos: pos,
+        }),
+        quote if quote == b'\'' || quote == b'"' => {
+          let mut buff = Vec::new();
+          while let Some(ch) = self.get_char() {
+            if ch.0 == b'\\' {
+              match self.get_char() {
+                Some((b'\'', _)) => buff.push(b'\''),
+                Some((b'"', _)) => buff.push(b'"'),
+                Some((b'\n', _)) => {
+                  loop {
+                    if let Some(c) = self.peek_char() {
+                      if is_space(c) {
+                        self.get_char();
+                      } else {
+                        break;
+                      }
                     } else {
-                      break;
+                      error!(self.pos, "Unexpected EOF")
                     }
-                  } else {
-                    error!(self.pos, "Unexpected EOF")
                   }
-                }
-              },
-              Some(b'n') => buff.push(b'\n'),
-              Some(ch) => error!(
-                self.pos, "Unrecogized escape sequence: \\{}", ch,
-              ),
-              None => error!(self.pos, "Unexpected EOF"),
-            }
-          } else if ch == quote {
-            break;
-          } else {
-            buff.push(ch);
-          }
-        }
-        Some(Token {
-          var: TokenVar::StrLit(buff),
-          pos: pos,
-        })
-      }
-      Some(ch) if is_ident_start(ch) => {
-        let pos = self.pos();
-        let mut ret = Vec::new();
-        ret.push(ch);
-        while let Some(c) = self.peek_char() {
-          if is_ident(c) {
-            self.get_char();
-            ret.push(c);
-          } else if c == b':' {
-            self.get_char();
-            return Some(Token {
-              var: TokenVar::Label(ret),
-              pos: pos,
-            });
-          } else {
-            break;
-          }
-        }
-        Some(Token {
-          var: {
-            if ret == b"data" {
-              TokenVar::Data
-            } else if ret == b"equ" {
-              TokenVar::Equ
-            } else if ret == b"rep" {
-              TokenVar::Rep
-            } else if ret == b"macro" {
-              TokenVar::Macro
-            } else if ret == b"endmacro" {
-              TokenVar::EndMacro
-            } else if ret == b"import" {
-              TokenVar::Import
-            } else if ret == b"public" {
-              TokenVar::Public
+                },
+                Some((b'n', _)) => buff.push(b'\n'),
+                Some((ch, pos)) => error!(
+                  pos, "Unrecogized escape sequence: \\{}", ch,
+                ),
+                None => error!(self.pos, "Unexpected EOF"),
+              }
+            } else if ch.0 == quote {
+              break;
             } else {
-              TokenVar::Ident(ret)
+              buff.push(ch.0);
             }
-          },
-          pos: pos,
-        })
-      }
-      Some(ch) if is_num(ch) => {
-        let pos = self.pos();
-        let mut base = 10;
-        let mut ret = Vec::new();
-        if ch == b'0' {
-          match self.peek_char() {
-            Some(b'b') => base = 2,
-            Some(b'o') => base = 8,
-            Some(b'd') => base = 10,
-            Some(b'x') => base = 16,
-            Some(ch) if is_num(ch) => ret.push(ch),
-            Some(ch) if is_alpha(ch) =>
-              error!(self.pos, "Unknown base specifier: {}", ch as char),
-            Some(_) | None => return Some(Token {
-              var: TokenVar::NumLit(0),
-              pos: pos,
-            })
           }
-          self.get_char();
-        } else {
+          Some(Token {
+            var: TokenVar::StrLit(buff),
+            pos: pos,
+          })
+        },
+        ch if is_ident_start(ch) => {
+          let mut ret = Vec::new();
           ret.push(ch);
+          while let Some(c) = self.peek_char() {
+            if is_ident(c) {
+              self.get_char();
+              ret.push(c);
+            } else if c == b':' {
+              self.get_char();
+              return Some(Token {
+                var: TokenVar::Label(ret),
+                pos: pos,
+              });
+            } else {
+              break;
+            }
+          }
+          Some(Token {
+            var: {
+              if ret == b"data" {
+                TokenVar::Data
+              } else if ret == b"equ" {
+                TokenVar::Equ
+              } else if ret == b"rep" {
+                TokenVar::Rep
+              } else if ret == b"macro" {
+                TokenVar::Macro
+              } else if ret == b"endmacro" {
+                TokenVar::EndMacro
+              } else if ret == b"import" {
+                TokenVar::Import
+              } else if ret == b"public" {
+                TokenVar::Public
+              } else {
+                TokenVar::Ident(ret)
+              }
+            },
+            pos: pos,
+          })
         }
-
-        while let Some(ch) = self.peek_char() {
-          if is_allowed(ch, base) {
+        ch if is_num(ch) => {
+          let mut base = 10;
+          let mut ret = Vec::new();
+          if ch == b'0' {
+            match self.peek_char() {
+              Some(b'b') => base = 2,
+              Some(b'o') => base = 8,
+              Some(b'd') => base = 10,
+              Some(b'x') => base = 16,
+              Some(ch) if is_num(ch) => ret.push(ch),
+              Some(ch) if is_alpha(ch) =>
+                error!(self.pos, "Unknown base specifier: {}", ch as char),
+              Some(_) | None => return Some(Token {
+                var: TokenVar::NumLit(0),
+                pos: pos,
+              })
+            }
             self.get_char();
+          } else {
             ret.push(ch);
-          } else if is_alpha(ch) {
-            error!(
-              self.pos,
-              "Unsupported character in a base-{} literal: {}",
-              base,
-              ch as char,
-            );
+          }
+
+          while let Some(ch) = self.peek_char() {
+            if is_allowed(ch, base) {
+              self.get_char();
+              ret.push(ch);
+            } else if is_alpha(ch) {
+              error!(
+                self.pos,
+                "Unsupported character in a base-{} literal: {}",
+                base,
+                ch as char,
+              );
+            } else {
+              break;
+            }
+          }
+          let ret = ret.iter().fold(0, |acc: u16, &el: &u8| {
+            let add = if is_alpha(el) { el - b'A' + 10 } else { el - b'0' };
+            match acc.checked_mul(base).and_then(|a| a.checked_add(add as u16)) {
+              Some(a) => a,
+              None => error!(
+                pos,
+                "Attempted to write an overflowing number literal: {}",
+                ::std::str::from_utf8(&ret).unwrap(),
+              ),
+            }
+          });
+          Some(Token {
+            var: TokenVar::NumLit(ret),
+            pos: pos,
+          })
+        },
+        b'%' => {
+          if let Some(next_tok) = self.next_token() {
+            if let TokenVar::NumLit(n) = next_tok.var {
+              Some(Token {
+                var: TokenVar::MacroArg(n),
+                pos: self.pos(),
+              })
+            } else if let TokenVar::Label(label) = next_tok.var {
+              Some(Token {
+                var: TokenVar::MacroLabel(label),
+                pos: pos,
+              })
+            } else if let TokenVar::Ident(_) = next_tok.var {
+              error!(self.pos, "Expected a colon");
+            } else {
+              error!(next_tok.pos, "Expected a label or number");
+            }
           } else {
-            break;
+            error!(self.pos, "Unexpected EOF");
           }
         }
-        let ret = ret.iter().fold(0, |acc: u16, &el: &u8| {
-          let add = if is_alpha(el) { el - b'A' + 10 } else { el - b'0' };
-          match acc.checked_mul(base).and_then(|a| a.checked_add(add as u16)) {
-            Some(a) => a,
-            None => error!(
-              pos,
-              "Attempted to write an overflowing number literal: {}",
-              ::std::str::from_utf8(&ret).unwrap(),
-            ),
-          }
-        });
-        Some(Token {
-          var: TokenVar::NumLit(ret),
-          pos: pos,
-        })
+        b'.' => Some(Token { var: TokenVar::Dot, pos: pos }),
+        ch => error!(
+          pos, "Unsupported character: `{}' (0x{:X})", ch as char, ch,
+        ),
       }
-      Some(b'%') => {
-        let pos = self.pos();
-        if let Some(next_tok) = self.next_token() {
-          if let TokenVar::NumLit(n) = next_tok.var {
-            Some(Token {
-              var: TokenVar::MacroArg(n),
-              pos: self.pos(),
-            })
-          } else if let TokenVar::Label(label) = next_tok.var {
-            Some(Token {
-              var: TokenVar::MacroLabel(label),
-              pos: pos,
-            })
-          } else if let TokenVar::Ident(_) = next_tok.var {
-            error!(self.pos, "Expected a colon");
-          } else {
-            error!(next_tok.pos, "Expected a label or number");
-          }
-        } else {
-          error!(self.pos, "Unexpected EOF");
-        }
-      }
-      Some(b'.') => Some(Token { var: TokenVar::Dot, pos: self.pos() }),
-      Some(ch) => error!(
-        self.pos, "Unsupported character: `{}' (0x{:X})", ch as char, ch,
-      ),
-      None => None,
+    } else {
+      None
     }
   }
 }
@@ -680,6 +680,7 @@ impl Lexer {
 
   fn dir_data(&mut self, pos: Position) -> Directive {
     let mut data = Vec::new();
+    let mut must_get = true;
     while let Some(tok) = self.next_token() {
       match tok.var {
         TokenVar::Rep => {
@@ -701,27 +702,49 @@ impl Lexer {
             },
             None => error!(self.pos, "Unexpected EOF"),
           }
+          must_get = false;
         }
-        TokenVar::Ident(id) => data.push(OpArg {
-          var: OpArgVar::Label(Self::to_string(&tok.pos, id)),
-          pos: tok.pos,
-        }),
+        TokenVar::Ident(id) => {
+          data.push(OpArg {
+            var: OpArgVar::Label(Self::to_string(&tok.pos, id)),
+            pos: tok.pos,
+          });
+          must_get = false;
+        },
         TokenVar::StrLit(s) => {
           let pos = tok.pos;
           data.extend(s.into_iter().map(|c| OpArg {
             var: OpArgVar::Number(c as u16),
             pos: pos.clone(),
-          }))
+          }));
+          must_get = false;
+        },
+        TokenVar::NumLit(n) => {
+          data.push(OpArg {
+            var: OpArgVar::Number(n),
+            pos: tok.pos,
+          });
+          must_get = false;
+        },
+        TokenVar::Here => {
+          data.push(OpArg {
+            var: OpArgVar::Here,
+            pos: tok.pos,
+          });
+          must_get = false;
+        },
+        TokenVar::Comma => {
+          if must_get {
+            error!(tok.pos, "Unexpected comma");
+          }
+          must_get = true;
+        },
+        TokenVar::Newline => {
+          if must_get {
+            error!(tok.pos, "Unexpected newline");
+          }
+          break
         }
-        TokenVar::NumLit(n) => data.push(OpArg {
-          var: OpArgVar::Number(n),
-          pos: tok.pos,
-        }),
-        TokenVar::Here => data.push(OpArg {
-          var: OpArgVar::Here,
-          pos: tok.pos,
-        }),
-        TokenVar::Newline => break,
         tv => error!(tok.pos, "Unexpected {}", tv),
       }
     }
@@ -809,7 +832,13 @@ impl Lexer {
     } else {
       error!(pos, "Unexpected EOF")
     };
-    let constant = if let Some(tok) = self.next_token() {
+    let constant = if let Some(mut tok) = self.next_token() {
+      if let TokenVar::Comma = tok.var {
+        tok = match self.next_token() {
+          Some(t) => t,
+          None => error!(pos, "Unexpected EOF"),
+        };
+      }
       let pos = tok.pos.clone();
       match Self::get_op_arg(tok) {
         Some(op) => op,
