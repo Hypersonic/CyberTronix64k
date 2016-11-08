@@ -200,9 +200,10 @@ void interp_instr() {
             rm = LOGIC_RM(ip);
             mem = LOGIC_MEM(ip);
             imm = LOGIC_IMM(ip);
-            P_TRACE("JG 0x%04x, 0x%04x, 0x%04x", rm, mem, imm);
+            P_TRACE("JQ 0x%04x, 0x%04x, 0x%04x", rm, mem, imm);
             if (rm == 0 && mem == 0 && imm == ip) { // Actually an HF instruction
                 P_TRACE("%s", "(actually HF)"); // the P_TRACE macro needs an VARARG, so do it this way :/
+                printf("HF @ 0x%04x\n", ip);
                 // TODO: switch to HACF CPU mode
                 abort();
             } else if (main_memory[rm] == main_memory[mem]) {
@@ -237,7 +238,10 @@ int main(int argc, char **argv) {
     main_memory[INST_PTR_LOC] = CODE_START; // initialize instruction pointer
     main_memory[STK_PTR_LOC] = 0x300; // initialize stack pointer
 
-    setvbuf(stdout, NULL, _IONBF, 0); // unbuffer stdout
+    //setvbuf(stdin, NULL, _IONBF, 0); // unbuffer stdout
+    //setvbuf(stdout, NULL, _IONBF, 0); // unbuffer stdout
+    setbuf(stdin, NULL);
+    setbuf(stdout, NULL);
 
     while (1) {
         interp_instr();
