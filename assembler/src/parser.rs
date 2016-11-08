@@ -386,6 +386,16 @@ impl Parser {
     this
   }
 
+  pub fn print_labels(&self) {
+    let mut labels = self.labels.iter().collect::<Vec<_>>();
+    labels.sort_by(|a, b| <_ as ::std::cmp::Ord>::cmp(&a.1, &b.1));
+    for (label, constant) in labels {
+      if *constant >= INST_OFFSET_BASE {
+        println!("{} = 0x{:X}", label, constant);
+      }
+    }
+  }
+
   fn get_directives(&mut self, imports: &mut Vec<PathBuf>, mut lexer: Lexer) {
     use std::path::{Path, PathBuf};
     fn make_path(cur_path: &Path, pos: &Position, vec: Vec<String>) -> PathBuf {

@@ -1,8 +1,10 @@
-use std::env;
 use std::fs::File;
 use std::io::Write;
 use std::fmt::{self, Debug};
 
+use clap::{Arg, App};
+
+extern crate clap;
 #[macro_use]
 extern crate maplit;
 
@@ -71,52 +73,49 @@ impl Debug for Opcode {
   }
 }
 
-struct Program(Vec<Opcode>);
+struct Program(Vec<Opcode>, parser::Parser);
 
 impl Program {
   fn new(filename: &str) -> Self {
-    Program(parser::Parser::new(filename).collect())
+    let mut parser = parser::Parser::new(filename);
+    let mut v = Vec::new();
+    while let Some(el) = parser.next() {
+      v.push(el);
+    }
+    Program(v, parser)
   }
 }
 
 fn main() {
-  let args = env::args_os().collect::<Vec<_>>();
-  let inpfilename = match args.get(1) {
-    Some(f) => match f.to_str() {
-      Some(s) => s,
-      None => error_np!("Filename must be valid utf-8; is {:?}", f),
-    },
-    None => error_np!(
-      "usage: {} filename -o output",
-      args.get(0).map(|own| own.to_string_lossy()).unwrap_or("program".into()),
-    ),
-  };
-  match args.get(2) {
-    Some(s) if s == "-o" => {},
-    Some(s) => {
-      error_np!(
-        "The second argument *must* be `-o' until I fix argument handling\n\
-        (it was {})",
-        s.to_string_lossy(),
-      );
-    }
-    None => error_np!(
-      "usage: {} filename -o output",
-      args.get(0).map(|own| own.to_string_lossy()).unwrap_or("program".into()),
-    ),
-  }
-  let outfilename = match args.get(3) {
-    Some(f) => match f.to_str() {
-      Some(s) => s,
-      None => error_np!("Filename must be valid utf-8; is {:?}", f),
-    },
-    None => error_np!(
-      "usage: {} filename -o output",
-      args.get(0).map(|own| own.to_string_lossy()).unwrap_or("program".into()),
-    ),
-  };
+  let matches =
+    App::new("CT64k Assembler")
+      .version("0.1")
+      .author("Nicole Mazzuca <npmazzuca@gmail.com>")
+      .about("A work in progress assembler for the CT64k")
+      .arg(
+        Arg::with_name("output")
+          .short("o")
+          .value_name("FILE")
+          .help("Sets the output file to use")
+          .required(true)
+          .takes_value(true),
+      ).arg(
+        Arg::with_name("input")
+          .help("Sets the input file to use")
+          .required(true)
+          .index(1),
+      ).arg(
+        Arg::with_name("print-labels")
+          .short("p")
+          .long("print-labels")
+          .help("Sets whether the assembler prints the values of the labels")
+      ).get_matches();
 
-  let program = Program::new(&inpfilename);
+  let outfilename = matches.value_of("output").unwrap();
+  let inpfilename = matches.value_of("input").unwrap();
+  let print_labels = matches.is_present("print-labels");
+
+  let program = Program::new(inpfilename);
   let mut out = Vec::new();
   for op in program.0 {
     use OpcodeVariant::*;
@@ -164,7 +163,12 @@ fn main() {
       Data(nums) => write(&mut out, &nums),
     }
   }
-  match File::create(&outfilename) {
+
+  if print_labels {
+    program.1.print_labels();
+  }
+
+  match File::create(outfilename) {
     Ok(mut file) => match file.write_all(&out) {
       Ok(_) => {}
       Err(e) => error_np!("Error while writing: {}", e),
