@@ -5,6 +5,7 @@ authors = ["ubsan <npmazzuca@gmail.com>"]
 
 [dependencies]
 maplit = "0.1.4"
+clap = "2.18.0"
 
 [profile.release]
 panic = "abort"

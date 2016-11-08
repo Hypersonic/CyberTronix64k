@@ -18,17 +18,17 @@ const REG_SC3: u16 = 0xC;
 
 #[derive(Copy, Clone)]
 enum BaseOp {
-  Mvi = 0x0,
-  Mv = 0x1,
-  Mvd = 0x2,
-  And = 0x3,
+  Mi = 0x0,
+  Mm = 0x1,
+  Md = 0x2,
+  Nd = 0x3,
   Or = 0x4,
-  Xor = 0x5,
-  Add = 0x6,
-  Sub = 0x7,
-  Shr = 0x8,
-  Shl = 0x9,
-  Sha = 0xA,
+  Xr = 0x5,
+  Ad = 0x6,
+  Sb = 0x7,
+  Sr = 0x8,
+  Sl = 0x9,
+  Sa = 0xA,
   Jl = 0xB,
   Jg = 0xC,
   Jb = 0xD,
@@ -46,60 +46,60 @@ pub struct Opcode {
 impl Opcode {
   pub fn from_str(s: &str) -> Option<Opcode> {
     Some(match s {
-      "mi" => Opcode { base: BaseOp::Mvi, bits16: true, imm: false },
-      "mib" => Opcode { base: BaseOp::Mvi, bits16: false, imm: false },
-      "li" => Opcode { base: BaseOp::Mvi, bits16: true, imm: true },
-      "lib" => Opcode { base: BaseOp::Mvi, bits16: false, imm: true },
+      "mi" => Opcode { base: BaseOp::Mi, bits16: true, imm: false },
+      "mib" => Opcode { base: BaseOp::Mi, bits16: false, imm: false },
+      "li" => Opcode { base: BaseOp::Mi, bits16: true, imm: true },
+      "lib" => Opcode { base: BaseOp::Mi, bits16: false, imm: true },
 
-      "mm" => Opcode { base: BaseOp::Mv, bits16: true, imm: false },
-      "mmb" => Opcode { base: BaseOp::Mv, bits16: false, imm: false },
-      "lm" => Opcode { base: BaseOp::Mv, bits16: true, imm: true },
-      "lmb" => Opcode { base: BaseOp::Mv, bits16: false, imm: true },
+      "mm" => Opcode { base: BaseOp::Mm, bits16: true, imm: false },
+      "mmb" => Opcode { base: BaseOp::Mm, bits16: false, imm: false },
+      "lm" => Opcode { base: BaseOp::Mm, bits16: true, imm: true },
+      "lmb" => Opcode { base: BaseOp::Mm, bits16: false, imm: true },
 
-      "md" => Opcode { base: BaseOp::Mvd, bits16: true, imm: false },
-      "mdb" => Opcode { base: BaseOp::Mvd, bits16: false, imm: false },
-      "ld" => Opcode { base: BaseOp::Mvd, bits16: true, imm: true },
-      "ldb" => Opcode { base: BaseOp::Mvd, bits16: false, imm: true },
+      "md" => Opcode { base: BaseOp::Md, bits16: true, imm: false },
+      "mdb" => Opcode { base: BaseOp::Md, bits16: false, imm: false },
+      "ld" => Opcode { base: BaseOp::Md, bits16: true, imm: true },
+      "ldb" => Opcode { base: BaseOp::Md, bits16: false, imm: true },
 
-      "nd" => Opcode { base: BaseOp::And, bits16: true, imm: false },
-      "ndb" => Opcode { base: BaseOp::And, bits16: false, imm: false },
-      "ndi" => Opcode { base: BaseOp::And, bits16: true, imm: true },
-      "ndbi" => Opcode { base: BaseOp::And, bits16: false, imm: true },
+      "nd" => Opcode { base: BaseOp::Nd, bits16: true, imm: false },
+      "ndb" => Opcode { base: BaseOp::Nd, bits16: false, imm: false },
+      "ndi" => Opcode { base: BaseOp::Nd, bits16: true, imm: true },
+      "ndib" => Opcode { base: BaseOp::Nd, bits16: false, imm: true },
 
       "or" => Opcode { base: BaseOp::Or, bits16: true, imm: false },
       "orb" => Opcode { base: BaseOp::Or, bits16: false, imm: false },
       "ori" => Opcode { base: BaseOp::Or, bits16: true, imm: true },
-      "orbi" => Opcode { base: BaseOp::Or, bits16: false, imm: true },
+      "orib" => Opcode { base: BaseOp::Or, bits16: false, imm: true },
 
-      "xr" => Opcode { base: BaseOp::Xor, bits16: true, imm: false },
-      "xrb" => Opcode { base: BaseOp::Xor, bits16: false, imm: false },
-      "xri" => Opcode { base: BaseOp::Xor, bits16: true, imm: true },
-      "xrbi" => Opcode { base: BaseOp::Xor, bits16: false, imm: true },
+      "xr" => Opcode { base: BaseOp::Xr, bits16: true, imm: false },
+      "xrb" => Opcode { base: BaseOp::Xr, bits16: false, imm: false },
+      "xri" => Opcode { base: BaseOp::Xr, bits16: true, imm: true },
+      "xrib" => Opcode { base: BaseOp::Xr, bits16: false, imm: true },
 
-      "ad" => Opcode { base: BaseOp::Add, bits16: true, imm: false },
-      "adb" => Opcode { base: BaseOp::Add, bits16: false, imm: false },
-      "adi" => Opcode { base: BaseOp::Add, bits16: true, imm: true },
-      "adbi" => Opcode { base: BaseOp::Add, bits16: false, imm: true },
+      "ad" => Opcode { base: BaseOp::Ad, bits16: true, imm: false },
+      "adb" => Opcode { base: BaseOp::Ad, bits16: false, imm: false },
+      "adi" => Opcode { base: BaseOp::Ad, bits16: true, imm: true },
+      "adib" => Opcode { base: BaseOp::Ad, bits16: false, imm: true },
 
-      "sb" => Opcode { base: BaseOp::Sub, bits16: true, imm: false },
-      "sbb" => Opcode { base: BaseOp::Sub, bits16: false, imm: false },
-      "sbi" => Opcode { base: BaseOp::Sub, bits16: true, imm: true },
-      "sbbi" => Opcode { base: BaseOp::Sub, bits16: false, imm: true },
+      "sb" => Opcode { base: BaseOp::Sb, bits16: true, imm: false },
+      "sbb" => Opcode { base: BaseOp::Sb, bits16: false, imm: false },
+      "sbi" => Opcode { base: BaseOp::Sb, bits16: true, imm: true },
+      "sbib" => Opcode { base: BaseOp::Sb, bits16: false, imm: true },
 
-      "sr" => Opcode { base: BaseOp::Shr, bits16: true, imm: false },
-      "srb" => Opcode { base: BaseOp::Shr, bits16: false, imm: false },
-      "sri" => Opcode { base: BaseOp::Shr, bits16: true, imm: true },
-      "srbi" => Opcode { base: BaseOp::Shr, bits16: false, imm: true },
+      "sr" => Opcode { base: BaseOp::Sr, bits16: true, imm: false },
+      "srb" => Opcode { base: BaseOp::Sr, bits16: false, imm: false },
+      "sri" => Opcode { base: BaseOp::Sr, bits16: true, imm: true },
+      "srib" => Opcode { base: BaseOp::Sr, bits16: false, imm: true },
 
-      "sl" => Opcode { base: BaseOp::Shl, bits16: true, imm: false },
-      "slb" => Opcode { base: BaseOp::Shl, bits16: false, imm: false },
-      "sli" => Opcode { base: BaseOp::Shl, bits16: true, imm: true },
-      "slbi" => Opcode { base: BaseOp::Shl, bits16: false, imm: true },
+      "sl" => Opcode { base: BaseOp::Sl, bits16: true, imm: false },
+      "slb" => Opcode { base: BaseOp::Sl, bits16: false, imm: false },
+      "sli" => Opcode { base: BaseOp::Sl, bits16: true, imm: true },
+      "slib" => Opcode { base: BaseOp::Sl, bits16: false, imm: true },
 
-      "sa" => Opcode { base: BaseOp::Sha, bits16: true, imm: false },
-      "sab" => Opcode { base: BaseOp::Sha, bits16: false, imm: false },
-      "sai" => Opcode { base: BaseOp::Sha, bits16: true, imm: true },
-      "sabi" => Opcode { base: BaseOp::Sha, bits16: false, imm: true },
+      "sa" => Opcode { base: BaseOp::Sa, bits16: true, imm: false },
+      "sab" => Opcode { base: BaseOp::Sa, bits16: false, imm: false },
+      "sai" => Opcode { base: BaseOp::Sa, bits16: true, imm: true },
+      "saib" => Opcode { base: BaseOp::Sa, bits16: false, imm: true },
 
       "jl" => Opcode { base: BaseOp::Jl, bits16: true, imm: false },
       "jle" => Opcode { base: BaseOp::Jl, bits16: false, imm: false },
@@ -163,7 +163,7 @@ pub struct Parser {
 }
 
 impl Parser {
-  pub fn new(filename: &str) -> Self {
+  pub fn new(filename: &str, print_labels: bool) -> Self {
     let path: PathBuf = match Path::new(filename).canonicalize() {
       Ok(c) => c,
       Err(_) => error_np!("Unable to open file: {}", filename),
@@ -256,6 +256,14 @@ impl Parser {
       }
     }
 
+    // DEBUG CODE
+    if print_labels {
+      let mut labels = this.labels.iter().collect::<Vec<_>>();
+      labels.sort_by(|a, b| <_ as ::std::cmp::Ord>::cmp(&a.1, &b.1));
+      for (label, equ) in labels {
+        println!("{} = 0x{:X}", label, equ);
+      }
+    }
     this
   }
 
