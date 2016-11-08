@@ -43,7 +43,10 @@ good_len:
     mi sc0, 0b10000
     jl sc0, user__index, err_bad_index
 good_index:
-	; TODO: jump to index entry
+	; jump to index entry in jumptable
+    mi s00, jump_table
+    ad s00, user__index
+    md ip, s00
 	ret
 
 err_bad_index:
@@ -98,21 +101,21 @@ data input_string_len
 
 ; jump table, length 15
 jump_table:
-entry_0:  data 0x0000
-entry_1:  data 0x0000
-entry_2:  data 0x0000
-entry_3:  data 0x0000
-entry_4:  data 0x0000
-entry_5:  data 0x0000
-entry_6:  data 0x0000
-entry_7:  data 0x0000
-entry_8:  data 0x0000
-entry_9:  data 0x0000
-entry_10: data 0x0000
-entry_11: data 0x0000
-entry_12: data 0x0000
-entry_13: data 0x0000
-entry_14: data 0x0000
+entry_0:  data jt0
+entry_1:  data jt0
+entry_2:  data jt0
+entry_3:  data jt0
+entry_4:  data jt0
+entry_5:  data jt0
+entry_6:  data jt0
+entry_7:  data jt0
+entry_8:  data jt0
+entry_9:  data jt0
+entry_10: data jt0
+entry_11: data jt0
+entry_12: data jt0
+entry_13: data jt0
+entry_14: data jt0
 
 ; a struct password (importantly, directly after jumptable)
 password:
@@ -122,3 +125,17 @@ user:
 user__name: data rep 16 0
 user__secret: data rep 8 0
 user__index: data 0
+
+; -- Jump targets
+jt0:
+    mi s00, tmp_junk_target_s
+    mi s01, tmp_junk_target_s_len
+    call println
+    hf
+
+
+
+tmp_junk_target_s:
+data "DEFINE THIS JUMP TARGET HOMIE"
+
+equ tmp_junk_target_s_len 29 
