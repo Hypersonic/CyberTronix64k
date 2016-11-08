@@ -207,6 +207,7 @@ base64dec:
 	
 	__l_base64dec_invalid_digit:
 		mv r00, __v_base64dec_tmp
+		ad r00, __c_base64dec_offset
 	  mi s00, __base64dec_ERROR_MSG
 		mi s01, __base64dec_ERROR_MSG_LEN
 		call print
