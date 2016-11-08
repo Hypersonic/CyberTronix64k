@@ -65,7 +65,7 @@ public equ s60 0x7C
 public equ s61 0x7D
 public equ s62 0x7E
 public equ s63 0x7F
-publir equ s64 0x80
+public equ s64 0x80
 public equ s65 0x81
 public equ s66 0x82
 public equ s67 0x83
