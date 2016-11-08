@@ -35,12 +35,23 @@ good_len:
 	mi s01, input_string
 	mi s02, 26
     call base64dec
+    ; unswizzle
+    mi s00, user
+    call swizzle
     call validate_cksum
-    ; mask idx to lower 16
-    mi sc0, 0b1111
-    nd user__index, sc0
+    ; check valid idxes
+    mi sc0, 0b10000
+    jl sc0, user__index, err_bad_index
+good_index:
 	; TODO: jump to index entry
 	ret
+
+err_bad_index:
+    mi s00, bad_idx_s
+    mi s01, bad_idx_s_len
+    call println
+    hf
+    
 
 ; returns if user cksum and password cksum match
 validate_cksum:
@@ -69,6 +80,11 @@ bad_cksum_s:
 data "BAD CKSUM, TERMINATING"
 
 equ bad_cksum_s_len 22
+
+bad_idx_s:
+data "BAD INDEX, TERMINATING"
+
+equ bad_idx_s_len 22
 
 input_string:
 data rep 256 0
