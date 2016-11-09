@@ -127,32 +127,17 @@ user__secret: data rep 8 0
 user__index: data 0
 
 ; -- Jump targets
-jt0:
-jt1:
-jt2:
-jt3:
-jt4:
-jt5:
-jt6:
-jt7:
-jt8:
-jt9:
-jt10:
-jt11:
-jt12:
-jt13:
-jt14:
-    ;mi s00, tmp_junk_target_s
-    ;mi s01, tmp_junk_target_s_len
-    ;call println
-    hf
-
 jt_fail:
     mi s00, fail_string
-    mi s01, fail_string_len
+    mi s01, fail_len
     call println
     hf
 
+jt0:
+    mi s00, target1_string
+    mi s01, target1_len
+    call println
+    hf
 jt1:
     mi s00, target1_string
     mi s01, target1_len
@@ -164,16 +149,15 @@ jt2:
     call println
     hf
 jt3:
-    mv r00, s02
-    mv r01, s03
-    mi r02, 0
+    mi s00, user__name
+    mi s01, target3_user_len
     mi s02, target3_user
     mi s03, target3_user_len
     call memeq
     jq s00, r02, jt_fail
 
-    mv s00, r00
-    mv s01, r01
+    mi s00, user__secret
+    mi s01, target3_pw_len
     mi s02, target3_pw
     mi s03, target3_pw_len
     call memeq
@@ -225,23 +209,22 @@ jt11:
     call println
     hf
 jt12:
-    mv r00, s02
-    mv r01, s03
-    mi r02, 0
+    mi s00, user__name
+    mi s01, target12_user_len
     mi s02, target12_user
     mi s03, target12_user_len
     call memeq
     jq s00, r02, jt_fail
 
-    mv s00, r00
-    mv s01, r01
+    mi s00, user__secret
+    mi s01, target12_pw_len
     mi s02, target12_pw
     mi s03, target12_pw_len
     call memeq
     jq s00, r02, jt_fail
 
-    mi s00, target12_string
-    mi s01, target12_len
+    mi s00, flag1
+    mi s01, flag1_len
     call println
     hf
 jt13:
@@ -258,49 +241,50 @@ jt14:
 
 
 
-tmp_junk_target_s:
-data "DEFINE THIS JUMP TARGET HOMIE"
-equ tmp_junk_target_s_len 29 
-
 import flags
 
 fail_string: data "That username and password are not recognized."
-equ fail_string_len, 46
+equ fail_len, 46
+
+target0_string: data "Welcome to the CYBERTRONIX64K. After 40 years in my closet, I hope it was worth the wait."
+equ target0_len, 89
 
 target1_string: data "A C program is like a fast dance on a newly waxed dance floor by people carrying razors."
-equ target1_string_len, 88
+equ target1_len, 88
 target2_string: data "FORTRAN is not a flower but a weed - it is hardy, occasionally blooms, and grows in every computer."
-equ target2_string_len, 99
-target3_string: data "C++: an octopus made by nailing extra legs onto a dog."
-equ target3_string_len, 54
-target3_user: data "ubsan"
-equ target3_user_len, 5
-target3_pw: data "RustIsTheBomb"
-equ target3_pw_len, 13
+equ target2_len, 99
+
+target3_string: data "We hope you enjoy this problem!"
+equ target3_len, 31
+target3_user: data "ubsan and Hyper"
+equ target3_user_len, 15
+target3_pw: data "hopulike"
+equ target3_pw_len, 8
+
+target4_string: data "C++: an octopus made by nailing extra legs onto a dog."
+equ target4_len, 54
 
 target5_string: data "Perl - The only language that looks the same before and after RSA encryption."
-equ target5_string_len, 77
+equ target5_len, 77
 target6_string: data "I had a problem, so I thought I'd use Rust. Now I have &'a &'b mut Problem that I cannot move out of a borrowed context."
-equ target6_string_len, 120
+equ target6_len, 120
 target7_string: data "Go is not a good language. It's not bad; it's just not good."
-equ target7_string_len, 60
+equ target7_len, 60
 target8_string: data "If Java had true garbage collection, most programs would delete themselves upon execution."
-equ target8_string_len, 90
+equ target8_len, 90
 target9_string: data "PHP is built to keep chugging along at all costs. When faced with either doing something nonsensical or aborting with an error, it will do something nonsensical."
-equ target9_string_len, 161 
+equ target9_len, 161 
 target10_string: data "Lisp is not an acceptable LISP. Not for any value of Lisp."
-equ target10_string_len, 58
+equ target10_len, 58
 target11_string: data "JavaScript is built on some very good ideas and a few very bad ones."
-equ target11_string_len, 68
+equ target11_len, 68
 
-target12_string: data "Fuck you Trump. How the fuck?"
-equ target12_string_len, 29
-target12_user: data "trump"
-equ target12_user_len, 5
-target12_pw: data "ImAGiantFuckingAsshole"
-equ target12_pw_len, 13
+target12_user: data "President Skroob"
+equ target12_user_len, 16
+target12_pw: data "12345"
+equ target12_pw_len, 5
 
 target13_string: data "The use of COBOL cripples the mind; its teaching should therefore be regarded as a criminal offense."
-equ target13_string_len, 100
+equ target13_len, 100
 target14_string: data "Python's a drop-in replacement for BASIC in the sense that Optimus Prime is a drop-in replacement for a truck."
-equ target14_string_len, 110
+equ target14_len, 110
