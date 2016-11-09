@@ -49,7 +49,6 @@ good_index:
     ad s00, user__index
     md ip, s00
 	ret
-
 err_bad_index:
     mi s00, bad_idx_s
     mi s01, bad_idx_s_len
@@ -129,9 +128,23 @@ user__index: data 0
 
 ; -- Jump targets
 jt0:
-    mi s00, tmp_junk_target_s
-    mi s01, tmp_junk_target_s_len
-    call println
+jt1:
+jt2:
+jt3:
+jt4:
+jt5:
+jt6:
+jt7:
+jt8:
+jt9:
+jt10:
+jt11:
+jt12:
+jt13:
+jt14:
+    ;mi s00, tmp_junk_target_s
+    ;mi s01, tmp_junk_target_s_len
+    ;call println
     hf
 
 jt_fail:
@@ -248,6 +261,8 @@ jt14:
 tmp_junk_target_s:
 data "DEFINE THIS JUMP TARGET HOMIE"
 equ tmp_junk_target_s_len 29 
+
+import flags
 
 fail_string: data "That username and password are not recognized."
 equ fail_string_len, 46
