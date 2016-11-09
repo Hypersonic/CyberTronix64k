@@ -104,8 +104,8 @@ base64enc:
 		ji __l_base64enc_enc_num_end
 
 
-__base64dec_ERROR_MSG: data "Invalid digit passed to base64dec: "
-equ __base64dec_ERROR_MSG_LEN 35
+__base64dec_ERROR_MSG: data "DECODE ERROR: "
+equ __base64dec_ERROR_MSG_LEN 14
 
 # NOTE: length of to_write must be length
 # NOTE: length of to_decode must be three times length
