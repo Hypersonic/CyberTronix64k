@@ -366,8 +366,14 @@ impl Lexer {
     fn is_space(c: u8) -> bool {
       c == b' ' || c == b'\t' || c == 0x0b || c == 0x0c  || c == b'\r'
     }
+    fn is_uppercase(c: u8) -> bool {
+      (c >= b'A' && c <= b'Z')
+    }
+    fn is_lowercase(c: u8) -> bool {
+      (c >= b'a' && c <= b'z')
+    }
     fn is_alpha(c: u8) -> bool {
-      (c >= b'a' && c <= b'z') || (c >= b'A' && c <= b'Z')
+       is_uppercase(c) || is_lowercase(c)
     }
     fn is_ident_start(c: u8) -> bool {
       is_alpha(c) || c == b'_'
@@ -548,7 +554,13 @@ impl Lexer {
             }
           }
           let ret = ret.iter().fold(0, |acc: u16, &el: &u8| {
-            let add = if is_alpha(el) { el - b'A' + 10 } else { el - b'0' };
+            let add = if is_uppercase(el) {
+              el - b'A' + 10
+            } else if is_lowercase(el) {
+              el - b'a' + 10
+            } else {
+              el - b'0'
+            };
             match acc.checked_mul(base).and_then(|a| a.checked_add(add as u16)) {
               Some(a) => a,
               None => error!(
